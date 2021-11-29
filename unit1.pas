@@ -13,13 +13,11 @@ type
   { TForm1 }
 
   TForm1 = class(TForm)
-    btnReload: TButton;
-    btnAddFake: TButton;
-    ListBox1: TListBox;
-    pnlLayout: TPanel;
+    btnReload1:  TButton;
+    ListBox1:    TListBox;
+    pnlLayout:   TPanel;
     StringGrid1: TStringGrid;
-    procedure btnReloadClick(Sender: TObject);
-    procedure btnAddFakeClick(Sender: TObject);
+    procedure tnReloadClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure ListBox1Click(Sender: TObject);
     procedure pnlDispArClick(Sender: TObject);
@@ -38,22 +36,42 @@ type
 
   public
     procedure makPnlsFromCurrent;
+    procedure mouseMVpanel(var pnl: TPanel; const Y: integer;
+      const X: integer; var Shift: TShiftState);
     procedure posPnls2Current;
 
   end;
 
 var
-  Form1: TForm1;
-  schDisplays: array of TPanel;
-  schDisplaysRects: array of TRect;
-  schDisplaysLbl: array of TLabel;
-  scaleLObyXY: double;
+  Form1:      TForm1;
+  schDispPnl: array of TPanel;
+  schDispLbl: array of TLabel;
+
+  schDisSnapHLt: array of TPanel;
+  schDisSnapHLb: array of TPanel;
+  schDisSnapHLl: array of TPanel;
+  schDisSnapHLr: array of TPanel;
+
+  snapHLpnlT: array of Boolean;
+  snapHLpnlB: array of Boolean;
+  snapHLpnlL: array of Boolean;
+  snapHLpnlR: array of Boolean;
+
+
+
+  scaleLObyXY:    double;
   scaleTocntrX, scaleTocntrY: integer;
   scaleTocntrXYi: integer;
 
 
-  pnlMoving: boolean = False;
+  pnlMoving:  boolean = False;
+  pnlSnapped: boolean = False;
   mmDownSx, mmDownSy: integer;
+
+
+
+const
+  OLTHRHO: integer = 12; // distance from other edge threshhold i guess
 
 implementation
 
@@ -67,50 +85,15 @@ begin
   posPnls2Current;
 end;
 
-procedure TForm1.btnReloadClick(Sender: TObject);
+procedure TForm1.tnReloadClick(Sender: TObject);
 begin
-  makPnlsFromCurrent;
   posPnls2Current;
 end;
-
-procedure TForm1.btnAddFakeClick(Sender: TObject);
-var
-  i: integer;
-begin
-  SetLength(schDisplays, length(schdisplays)+1);
-  SetLength(schDisplaysRects, length(schdisplays)+1);
-  setlength(schDisplaysLbl, length(schdisplays)+1);
-  i:=length(schDisplays)-1;
-  ListBox1.Items.Add('Fake Display ' + IntToStr(i));
-
-
-
-    schDisplays[i] := TPanel.Create(Form1);
-    schDisplays[i].OnPaint := @pnlDispArPaint;
-    schDisplays[i].OnClick := @pnlDispArClick;
-    schDisplays[i].OnMouseEnter := @pnlDispArMouseEnter;
-    schDisplays[i].OnMouseLeave := @pnlDispArMouseLeave;
-    schDisplays[i].OnMouseDown := @pnlDispArMouseDown;
-    schDisplays[i].OnMouseUp := @pnlDispArMouseUp;
-    schDisplays[i].OnMouseMove := @pnlDispArMouseMove;
-    schDisplays[i].OnMouseDown := @pnlDispArMouseDown;
-
-
-    schDisplaysLbl[i] := TLabel.Create(schDisplays[i]);
-    schDisplaysLbl[i].Caption := IntToStr(i);
-    schDisplaysLbl[i].Parent := schDisplays[i];
-    schDisplays[i].BevelColor := clWhite;
-    schDisplays[i].BorderStyle := bsSingle;
-    schDisplays[i].Parent := pnlLayout;
-    schDisplays[i].top := schDisplays[i-1].Top;
-    schDisplays[i].left := schDisplays[i-1].left;
-end;
-
 
 
 procedure TForm1.ListBox1Click(Sender: TObject);
 begin
-  if AnsiContainsText(ListBox1.Items[ListBox1.ItemIndex],'fake') then exit;
+  if AnsiContainsText(ListBox1.Items[ListBox1.ItemIndex], 'fake') then exit;
   StringGrid1.Cells[0, 0] := 'Resolution';
   StringGrid1.Cells[1, 0] :=
     IntToStr(Screen.Monitors[ListBox1.ItemIndex].Width) + 'x' +
@@ -136,14 +119,15 @@ end;
 
 procedure TForm1.pnlDispArClick(Sender: TObject);
 var
-  i: integer;
+  i:   integer;
   pnl: TPanel;
 begin
   pnl := Sender as TPanel;
-  for i := 0 to Length(schDisplays) - 1 do
+
+  for i := 0 to Length(schDispPnl) - 1 do
   begin
     //find the display clicked and set listindex
-    if pnl.Handle = schDisplays[i].Handle then
+    if pnl.Handle = schDispPnl[i].Handle then
     begin
       ListBox1.ItemIndex := i;
       ListBox1Click(Sender);
@@ -163,7 +147,7 @@ procedure TForm1.pnlDispArMouseDown(Sender: TObject; Button: TMouseButton;
 var
   pnl: TPanel;
 begin
-  pnl := Sender as TPanel;
+  pnl      := Sender as TPanel;
   pnlMoving := True;
   mmDownSx := x;
   mmDownSy := y;
@@ -191,60 +175,127 @@ end;
 procedure TForm1.pnlDispArMouseMove(Sender: TObject; Shift: TShiftState; X, Y: integer);
 var
   pnl: TPanel;
-  i: integer;
-  snapCloseTop, SnapCloseLeft, SnapCloseRight, SnapCloseBottom: integer;
-  goTop, goBottom, goLeft, goRight: boolean;
-  overLappersX, overLappersY: array of boolean;
+  i:   integer;
+  SnapsTH, SnapsTL, SnapsBH, SnapsBL, SnapsLH, SnapsLL, SnapsRH, SnapsRL: array of
+  integer;
 
-  snapToT, SnapToB, SnapToL, SnapToR: array of boolean;
-  ovLapsT, ovLapsB, ovLapsL, ovLapsR: array of boolean;
-  enSnapT, enSnapB, enSnapL, enSnapR: integer; // final calculated positions to snap to
+  snapRect: TRect;
 
-  olThrHo: integer = 25; // distance from other edge threshhold i guess
 begin
   pnl := Sender as TPanel;
-  if (Shift = [ssLeft]) and (pnlMoving) then
-  begin
-    pnl.Left := pnl.Left + (x - mmDownSx);
-    pnl.Top := pnl.Top + (y - mmDownSy);
+
+  for i:=0 to Length(schDispPnl)-1 do begin
+    snapHLpnlT[i]:=False;
+    snapHLpnlB[i]:=False;
+    snapHLpnlL[i]:=False;
+    snapHLpnlR[i]:=False;
   end;
 
-    SetLength(overLappersX, Length(schDisplays));
-    SetLength(overLappersY, Length(schDisplays));
-    SetLength(snapToT, Length(schDisplays));
-    SetLength(SnapToB, Length(schDisplays));
-    SetLength(SnapToL, Length(schDisplays));
-    SetLength(SnapToR, Length(schDisplays));
-    SetLength(ovLapsT, Length(schDisplays));
-    SetLength(ovLapsB, Length(schDisplays));
-    SetLength(ovLapsL, Length(schDisplays));
-    SetLength(ovLapsR, Length(schDisplays));
+  mouseMVpanel(pnl, Y, X, Shift);
+  snapRect := pnl.BoundsRect;
 
 
-  if (Shift = [ssLeft]) and (pnlMoving) then begin
-    for i:=0 to Length(schDisplays)-1 do begin
-      if pnl.Handle = schDisplays[i].Handle then continue;
+  SetLength(SnapsTH, Length(schDispPnl));
+  SetLength(SnapsTL, Length(schDispPnl));
+  SetLength(SnapsBH, Length(schDispPnl));
+  SetLength(SnapsBL, Length(schDispPnl));
+  SetLength(SnapsLH, Length(schDispPnl));
+  SetLength(SnapsLL, Length(schDispPnl));
+  SetLength(SnapsRH, Length(schDispPnl));
+  SetLength(SnapsRL, Length(schDispPnl));
 
-      if (abs(pnl.Top)+olThrHo > abs(schDisplays[i].Top)) and
-         (abs(pnl.Top)-olThrHo > abs(schDisplays[i].Top)) then begin
-         snapToT[i]:=True;
-      end else snapToB[i]:=false;
+  if (Shift = [ssLeft]) and (pnlMoving) then
+  begin
+    // establish all ranges where snapping needs to happen
+    for i := 0 to Length(schDispPnl) - 1 do
+    begin
+      SnapsTH[i] := schDispPnl[i].BoundsRect.Top + OLTHRHO;
+      SnapsTL[i] := schDispPnl[i].BoundsRect.Top - OLTHRHO;
+      SnapsBH[i] := schDispPnl[i].BoundsRect.Bottom + OLTHRHO;
+      SnapsBL[i] := schDispPnl[i].BoundsRect.Bottom - OLTHRHO;
+      SnapsLH[i] := schDispPnl[i].BoundsRect.Left + OLTHRHO;
+      SnapsLL[i] := schDispPnl[i].BoundsRect.Left - OLTHRHO;
+      SnapsRH[i] := schDispPnl[i].BoundsRect.Right + OLTHRHO;
+      SnapsRL[i] := schDispPnl[i].BoundsRect.Right - OLTHRHO;
+    end;
 
-      if (abs(pnl.BoundsRect.Bottom)+olThrHo > abs(schDisplays[i].BoundsRect.Bottom)) and
-         (abs(pnl.BoundsRect.Bottom)-olThrHo > abs(schDisplays[i].BoundsRect.Bottom)) then begin
-         snapToB[i]:=True;
-      end else snapToT[i]:=false;
+    for i := 0 to Length(schDispPnl) - 1 do
+    begin
+      // dont want it to try to snap to itself
+      if pnl = schDispPnl[i] then
+      begin
+        Continue;
+      end;
+
+      // try to snap a TOP to a TOP
+      if (pnl.BoundsRect.Top < SnapsTH[i]) and (pnl.BoundsRect.Top > SnapsTL[i]) then
+      begin
+        snapRect.Top := schDispPnl[i].Top;
+        snapHLpnlT[i]:=True;
+      end;
+
+      // try to snap a TOP to a BOTTOM
+      if (pnl.BoundsRect.Top < SnapsBH[i]) and (pnl.BoundsRect.Top > SnapsBL[i]) then
+      begin
+        snapRect.Top := schDispPnl[i].BoundsRect.Bottom;
+        snapHLpnlB[i]:=True;
+      end;
+
+      // try to snap to a BOTTOM to a TOP
+      if (pnl.BoundsRect.Bottom < SnapsTH[i]) and
+        (pnl.BoundsRect.Bottom > SnapsTL[i]) then
+      begin
+        snapRect.Top := schDispPnl[i].Top - pnl.Height;
+        snapHLpnlT[i]:=True;
+      end;
+
+      // try to snap a BOTTOM to a BOTTOM
+      if (pnl.BoundsRect.Bottom < SnapsBH[i]) and
+        (pnl.BoundsRect.Bottom > SnapsBL[i]) then
+      begin
+        snapRect.Top := schDispPnl[i].BoundsRect.Bottom - pnl.Height;
+        snapHLpnlB[i]:=True;
+      end;
+
+      // try to snap a LEFT to a LEFT
+      if (pnl.BoundsRect.Left < SnapsLH[i]) and (pnl.BoundsRect.Left > SnapsLL[i]) then
+      begin
+        snapRect.Left := schDispPnl[i].BoundsRect.Left;
+        snapHLpnlL[i]:=True;
+      end;
+
+      // try to snap a LEFT to a Right
+      if (pnl.BoundsRect.Left < SnapsRH[i]) and (pnl.BoundsRect.Left > SnapsRL[i]) then
+      begin
+        snapRect.Left := schDispPnl[i].BoundsRect.Right;
+        snapHLpnlR[i]:=True;
+      end;
+
+      // try to snap a RIGHT to a LEFT
+      if (pnl.BoundsRect.Right < SnapsLH[i]) and (pnl.BoundsRect.Right > SnapsLL[i]) then
+      begin
+        snapRect.Left := schDispPnl[i].BoundsRect.left - pnl.Width;
+        snapHLpnlL[i]:=True;
+      end;
+
+      // try to snap a RIGHT to a RIGHT
+      if (pnl.BoundsRect.Right < SnapsRH[i]) and (pnl.BoundsRect.Right > SnapsRL[i]) then
+      begin
+        snapRect.Left := schDispPnl[i].BoundsRect.Right - pnl.Width;
+        snapHLpnlR[i]:=True;
+      end;
 
     end;
 
   end;
 
-  for i:=0 to Length(schDisplays)-1 do begin
-    if snapToT[i] = true then pnl.Top:=schDisplays[i].Top ;
-  end;
 
-  for i:=0 to Length(schDisplays)-1 do begin
-    if snapToB[i] = true then pnl.Top:=schDisplays[i].Top-schDisplays[i].Height ;
+  pnl.SetBounds(snapRect.Left, snapRect.Top, pnl.Width, pnl.Height);
+  for i:=0 to Length(schDispPnl)-1 do begin
+    schDisSnapHLt[i].Visible:=snapHLpnlT[i];
+    schDisSnapHLb[i].Visible:=snapHLpnlB[i];
+    schDisSnapHLl[i].Visible:=snapHLpnlL[i];
+    schDisSnapHLr[i].Visible:=snapHLpnlR[i];
   end;
 
 
@@ -254,67 +305,14 @@ procedure TForm1.pnlDispArMouseUp(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: integer);
 var
   pnl: TPanel;
-  i: integer;
-  snapCloseTop, SnapCloseLeft, SnapCloseRight, SnapCloseBottom: integer;
-  goTop, goBottom, goLeft, goRight: boolean;
-  overLappersX, overLappersY: array of boolean;
-
-  snapToT, SnapToB, SnapToL, SnapToR: array of boolean;
-  ovLapsT, ovLapsB, ovLapsL, ovLapsR: array of boolean;
-  enSnapT, enSnapB, enSnapL, enSnapR: integer; // final calculated positions to snap to
-
-  olThrHo: integer = 20; // distance from other edge threshhold i guess
+  i:   integer;
 begin
-  if Button = mbLeft then
+  for i := 0 to Length(schDispPnl) - 1 do
   begin
-
-    pnl := Sender as TPanel;
-    pnlMoving := False;
-
-
-  //  SetLength(overLappersX, Length(schDisplays));
-  //  SetLength(overLappersY, Length(schDisplays));
-  //  SetLength(snapToT, Length(schDisplays));
-  //  SetLength(SnapToB, Length(schDisplays));
-  //  SetLength(SnapToL, Length(schDisplays));
-  //  SetLength(SnapToR, Length(schDisplays));
-  //  SetLength(ovLapsT, Length(schDisplays));
-  //  SetLength(ovLapsB, Length(schDisplays));
-  //  SetLength(ovLapsL, Length(schDisplays));
-  //  SetLength(ovLapsR, Length(schDisplays));
-  //
-  //  //find Tops to snap to first i think
-  //  for i := 0 to Length(schDisplays) - 1 do
-  //  begin
-  //    //find if it needs to snap to a bottom or top of another panel
-  //    if pnl.Handle = schDisplays[i].Handle then
-  //    begin
-  //      overLappersY[i] := False; // well it certainly doesn't overlap itself, does it?
-  //      continue; // restart loop and increase i
-  //    end;
-  //
-  //
-  //    if (pnl.Top < schDisplays[i].Top + olThrHo) and (pnl.top <
-  //      schDisplays[i].top - olThrHo) then
-  //    begin
-  //      ovLapsT[i] := True; //over
-  //      pnl.Top := schDisplays[i].BoundsRect.Bottom;
-  //      exit;
-  //    end
-  //    else
-  //    begin
-  //      overLappersY[i] := False;
-  //
-  //    end;
-  //
-  //  end;
-  //
-  //  //for i:=0 to Length(schDisplays) do begin
-  //
-  //  //  WriteLn('X Overlap with Display'+IntToStr(i)+BoolToStr(overLappersX[i],true);
-  //  //end;
-  //
-  //end;
+    schDisSnapHLt[i].Visible := False;
+    schDisSnapHLb[i].Visible := False;
+    schDisSnapHLl[i].Visible := False;
+    schDisSnapHLr[i].Visible := False;
   end;
 
 end;
@@ -324,13 +322,34 @@ begin
 
 end;
 
+procedure TForm1.mouseMVpanel(var pnl: TPanel; const Y: integer;
+  const X: integer; var Shift: TShiftState);
+begin
+  if (Shift = [ssLeft]) and (pnlMoving) then
+  begin
+    pnl.Left := pnl.Left + (x - mmDownSx);
+    pnl.Top  := pnl.Top + (y - mmDownSy);
+
+  end;
+end;
+
 procedure TForm1.makPnlsFromCurrent;
 var
   i: integer;
 begin
-  SetLength(schDisplays, Screen.MonitorCount);
-  SetLength(schDisplaysRects, Screen.MonitorCount);
-  setlength(schDisplaysLbl, screen.MonitorCount);
+  SetLength(schDispPnl, Screen.MonitorCount);
+  SetLength(schDispLbl, screen.MonitorCount);
+  SetLength(schDisSnapHLt, screen.MonitorCount);
+  SetLength(schDisSnapHLb, screen.MonitorCount);
+  SetLength(schDisSnapHLl, screen.MonitorCount);
+  SetLength(schDisSnapHLr, screen.MonitorCount);
+
+  SetLength(snapHLpnlT, screen.MonitorCount);
+  SetLength(snapHLpnlB, screen.MonitorCount);
+  SetLength(snapHLpnlL, screen.MonitorCount);
+  SetLength(snapHLpnlR, screen.MonitorCount);
+
+
 
   for i := 0 to Screen.MonitorCount - 1 do
   begin
@@ -342,31 +361,46 @@ begin
         );
 
 
+    //make the panel that represents a display
+    schDispPnl[i] := TPanel.Create(Form1);
+    schDispPnl[i].OnPaint := @pnlDispArPaint;
+    schDispPnl[i].OnClick := @pnlDispArClick;
+    schDispPnl[i].OnMouseEnter := @pnlDispArMouseEnter;
+    schDispPnl[i].OnMouseLeave := @pnlDispArMouseLeave;
+    schDispPnl[i].OnMouseDown := @pnlDispArMouseDown;
+    schDispPnl[i].OnMouseUp := @pnlDispArMouseUp;
+    schDispPnl[i].OnMouseMove := @pnlDispArMouseMove;
+    schDispPnl[i].OnMouseDown := @pnlDispArMouseDown;
+    schDispPnl[i].BevelColor := clWhite;
+    schDispPnl[i].BorderStyle := bsSingle;
+    schDispPnl[i].Parent := pnlLayout;
 
-    schDisplays[i] := TPanel.Create(Form1);
-    schDisplays[i].OnPaint := @pnlDispArPaint;
-    schDisplays[i].OnClick := @pnlDispArClick;
-    schDisplays[i].OnMouseEnter := @pnlDispArMouseEnter;
-    schDisplays[i].OnMouseLeave := @pnlDispArMouseLeave;
-    schDisplays[i].OnMouseDown := @pnlDispArMouseDown;
-    schDisplays[i].OnMouseUp := @pnlDispArMouseUp;
-    schDisplays[i].OnMouseMove := @pnlDispArMouseMove;
-    schDisplays[i].OnMouseDown := @pnlDispArMouseDown;
+    // make a label that goes with each display/panel
+    schDispLbl[i] := TLabel.Create(schDispPnl[i]);
+    schDispLbl[i].Caption := IntToStr(i);
+    schDispLbl[i].Parent := schDispPnl[i];
 
+    // make the highlight panels that show where its snapping to
+    schDisSnapHLt[i] := TPanel.Create(schDispPnl[i]);
+    schDisSnapHLt[i].Parent := schDispPnl[i];
+    schDisSnapHLb[i] := TPanel.Create(schDispPnl[i]);
+    schDisSnapHLb[i].Parent := schDispPnl[i];
+    schDisSnapHLl[i] := TPanel.Create(schDispPnl[i]);
+    schDisSnapHLl[i].Parent := schDispPnl[i];
+    schDisSnapHLr[i] := TPanel.Create(schDispPnl[i]);
+    schDisSnapHLr[i].Parent := schDispPnl[i];
 
-    schDisplaysLbl[i] := TLabel.Create(schDisplays[i]);
-    schDisplaysLbl[i].Caption := IntToStr(i);
-    schDisplaysLbl[i].Parent := schDisplays[i];
-    schDisplays[i].BevelColor := clWhite;
-    schDisplays[i].BorderStyle := bsSingle;
-    schDisplays[i].Parent := pnlLayout;
+    snapHLpnlT[i]:=False;
+    snapHLpnlB[i]:=False;
+    snapHLpnlL[i]:=False;
+    snapHLpnlR[i]:=False;
   end;
 end;
 
 procedure TForm1.posPnls2Current;
 var
   highR: integer;
-  i: integer;
+  i:     integer;
 begin
   highR := 0;
   for i := 0 to screen.MonitorCount - 1 do
@@ -377,20 +411,54 @@ begin
 
   end;
 
-  scaleLObyXY := pnlLayout.Width / int64(highR);
+  scaleLObyXY  := pnlLayout.Width / int64(highR);
   scaleTocntrX := pnlLayout.Width div 4;
   scaleTocntrY := pnlLayout.Height div 4;
 
   for i := 0 to Screen.MonitorCount - 1 do
   begin
 
-    schDisplays[i].Left := (trunc(Screen.Monitors[i].Left * scaleLObyXY) div 2) +
+    schDispPnl[i].Left := (trunc(Screen.Monitors[i].Left * scaleLObyXY) div 2) +
       scaleTocntrX;
-    schDisplays[i].Top := (trunc(Screen.Monitors[i].Top * scaleLObyXY) div 2) +
+    schDispPnl[i].Top  := (trunc(Screen.Monitors[i].Top * scaleLObyXY) div 2) +
       scaleTocntrY;
 
-    schDisplays[i].Width := (trunc(Screen.Monitors[i].Width * scaleLObyXY) div 2);
-    schDisplays[i].Height := (trunc(Screen.Monitors[i].Height * scaleLObyXY) div 2);
+    schDispPnl[i].Width  := (trunc(Screen.Monitors[i].Width * scaleLObyXY) div 2);
+    schDispPnl[i].Height := (trunc(Screen.Monitors[i].Height * scaleLObyXY) div 2);
+
+    // place your labels in each
+    schDispLbl[i].Left := (schDispPnl[i].Width div 2); //Center horizontally
+    schDispLbl[i].Top  := (schDispPnl[i].Height div 2); //center vertically
+
+    // lay out the "highlighter panels"
+    schDisSnapHLt[i].Left    := 0;
+    schDisSnapHLt[i].Top     := 0;
+    schDisSnapHLt[i].Width   := schDispPnl[i].Width;
+    schDisSnapHLt[i].Height  := 5;
+    schDisSnapHLt[i].Color   := clRed;
+    schDisSnapHLt[i].Visible := False;
+
+    schDisSnapHLb[i].Left    := 0;
+    schDisSnapHLb[i].Top     := schDispPnl[i].Height - 5;
+    schDisSnapHLb[i].Width   := schDispPnl[i].Width;
+    schDisSnapHLb[i].Height  := 5;
+    schDisSnapHLb[i].Color   := clRed;
+    schDisSnapHLb[i].Visible := False;
+
+    schDisSnapHLl[i].Left    := 0;
+    schDisSnapHLl[i].Top     := 0;
+    schDisSnapHLl[i].Width   := 5;
+    schDisSnapHLl[i].Height  := schDispPnl[i].Height;
+    schDisSnapHLl[i].Color   := clRed;
+    schDisSnapHLl[i].Visible := False;
+
+    schDisSnapHLr[i].Left    := schDispPnl[i].Width - 5;
+    schDisSnapHLr[i].Top     := 0;
+    schDisSnapHLr[i].Width   := 5;
+    schDisSnapHLr[i].Height  := schDispPnl[i].Height;
+    schDisSnapHLr[i].Color   := clRed;
+    schDisSnapHLr[i].Visible := False;
+
   end;
 end;
 

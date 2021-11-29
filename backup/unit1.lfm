@@ -1,21 +1,54 @@
 object Form1: TForm1
-  Left = 3559
-  Height = 463
-  Top = 1477
-  Width = 820
+  Left = 3608
+  Height = 680
+  Top = 1213
+  Width = 1228
   Caption = 'LazRandR Helper'
-  ClientHeight = 463
-  ClientWidth = 820
+  ClientHeight = 680
+  ClientWidth = 1228
   Constraints.MinHeight = 350
   Constraints.MinWidth = 500
   OnCreate = FormCreate
+  Position = poDesktopCenter
   LCLVersion = '2.3.0.0'
+  object pnlLayout: TPanel
+    AnchorSideLeft.Control = Owner
+    AnchorSideTop.Control = Owner
+    AnchorSideRight.Control = Owner
+    AnchorSideRight.Side = asrBottom
+    AnchorSideBottom.Control = ListBox1
+    Left = 5
+    Height = 512
+    Top = 5
+    Width = 1218
+    Anchors = [akTop, akLeft, akRight, akBottom]
+    BorderSpacing.Around = 5
+    ClientHeight = 512
+    ClientWidth = 1218
+    TabOrder = 2
+    object btnReload1: TButton
+      AnchorSideRight.Control = pnlLayout
+      AnchorSideRight.Side = asrBottom
+      AnchorSideBottom.Control = pnlLayout
+      AnchorSideBottom.Side = asrBottom
+      Left = 1058
+      Height = 33
+      Top = 473
+      Width = 154
+      Anchors = [akRight, akBottom]
+      BorderSpacing.Right = 5
+      BorderSpacing.Bottom = 5
+      Caption = 'Reload Current Setup'
+      OnClick = tnReloadClick
+      TabOrder = 0
+    end
+  end
   object ListBox1: TListBox
     AnchorSideBottom.Control = Owner
     AnchorSideBottom.Side = asrBottom
     Left = 10
     Height = 153
-    Top = 305
+    Top = 522
     Width = 185
     Anchors = [akLeft, akBottom]
     BorderSpacing.Bottom = 5
@@ -31,8 +64,8 @@ object Form1: TForm1
     AnchorSideBottom.Side = asrBottom
     Left = 200
     Height = 153
-    Top = 305
-    Width = 615
+    Top = 522
+    Width = 1023
     Anchors = [akLeft, akRight, akBottom]
     AutoFillColumns = True
     BorderSpacing.Right = 5
@@ -41,7 +74,7 @@ object Form1: TForm1
     Columns = <    
       item
         Title.Caption = 'Title'
-        Width = 372
+        Width = 780
       end    
       item
         SizePriority = 0
@@ -52,58 +85,8 @@ object Form1: TForm1
     FixedRows = 0
     TabOrder = 1
     ColWidths = (
-      372
+      780
       241
     )
-  end
-  object pnlLayout: TPanel
-    AnchorSideLeft.Control = Owner
-    AnchorSideRight.Control = Owner
-    AnchorSideRight.Side = asrBottom
-    AnchorSideBottom.Control = ListBox1
-    Left = 10
-    Height = 287
-    Top = 8
-    Width = 800
-    Anchors = [akTop, akLeft, akRight, akBottom]
-    BorderSpacing.Left = 10
-    BorderSpacing.Right = 10
-    BorderSpacing.Bottom = 10
-    BevelInner = bvLowered
-    BevelOuter = bvLowered
-    ClientHeight = 287
-    ClientWidth = 800
-    TabOrder = 2
-    object btnReload: TButton
-      AnchorSideRight.Control = pnlLayout
-      AnchorSideRight.Side = asrBottom
-      AnchorSideBottom.Control = pnlLayout
-      AnchorSideBottom.Side = asrBottom
-      Left = 639
-      Height = 33
-      Top = 247
-      Width = 154
-      Anchors = [akRight, akBottom]
-      BorderSpacing.Right = 5
-      BorderSpacing.Bottom = 5
-      Caption = 'Reload Current Setup'
-      OnClick = btnReloadClick
-      TabOrder = 0
-    end
-    object btnAddFake: TButton
-      AnchorSideLeft.Control = pnlLayout
-      AnchorSideBottom.Control = pnlLayout
-      AnchorSideBottom.Side = asrBottom
-      Left = 7
-      Height = 33
-      Top = 247
-      Width = 161
-      Anchors = [akLeft, akBottom]
-      BorderSpacing.Left = 5
-      BorderSpacing.Bottom = 5
-      Caption = 'Add Fake Monitor'
-      OnClick = btnAddFakeClick
-      TabOrder = 1
-    end
   end
 end
