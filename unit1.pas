@@ -324,13 +324,16 @@ end;
 
 procedure TForm1.mouseMVpanel(var pnl: TPanel; const Y: integer;
   const X: integer; var Shift: TShiftState);
+var
+mvRect: TRect;
 begin
   if (Shift = [ssLeft]) and (pnlMoving) then
   begin
-    pnl.Left := pnl.Left + (x - mmDownSx);
-    pnl.Top  := pnl.Top + (y - mmDownSy);
-
+    mvRect.Left:=pnl.Left + (x - mmDownSx);
+    mvRect.Top:=pnl.Top + (y - mmDownSy);
+    pnl.SetBounds(mvRect.Left,mvRect.Top,pnl.Width,pnl.Height);
   end;
+
 end;
 
 procedure TForm1.makPnlsFromCurrent;
@@ -407,8 +410,6 @@ begin
   begin
     if Screen.Monitors[i].BoundsRect.Right > highR then
       highR := Screen.Monitors[i].WorkareaRect.Right;
-    Writeln('Highest Right: ' + IntToStr(highR));
-
   end;
 
   scaleLObyXY  := pnlLayout.Width / int64(highR);
