@@ -637,8 +637,9 @@ end;
 
 procedure TLayoutCanvas.DrawTile(Idx: integer);
 var
-  R, Inner: TRect;
-  Sel, Ena: boolean;
+  R, Inner, Band: TRect;
+  Sel, Ena, ShowRes, ShowBadges: boolean;
+  BandTop, BandBottom: integer;
   NumStr, NameStr, ResStr: string;
   LW, LH: integer;
   FromC, ToC: TColor;
@@ -710,21 +711,43 @@ begin
   else
     StrokeRounded(FBmp, R, TileRadius, ToBGRA(clHairlineSoft), 1);
 
-  { Big ghosted index number, the thing you actually navigate by. }
-  NumStr := IntToStr(FXR.DisplayOrdinal(Idx));
-  FBmp.FontName := UIFont;
-  FBmp.FontStyle := [fsBold];
-  FBmp.FontQuality := fqFineAntialiasing;
-  FBmp.FontHeight := Max(18, Min((R.Bottom - R.Top) * 2 div 3, (R.Right - R.Left) * 2 div 3));
-  TW := FBmp.TextSize(NumStr).cx;
-  TH := FBmp.TextSize(NumStr).cy;
-  FBmp.TextOut((R.Left + R.Right - TW) div 2,
-    (R.Top + R.Bottom - TH) div 2,
-    NumStr, ToBGRA(IfThen(Ena, clTextBright, clTextFaint),
-      IfThen(Ena, 36, 26)));
-
   Inner := Rect(R.Left + 10, R.Top + 8, R.Right - 10, R.Bottom - 8);
   if Inner.Right <= Inner.Left then Exit;
+
+  ShowRes := (Inner.Bottom - Inner.Top) > 34;
+  ShowBadges := (Inner.Bottom - Inner.Top) > 52;
+
+  { Work out the band left over between the header text and the badges, and
+    keep the big number inside it. Sizing the number off the whole tile made
+    it collide with the name and resolution on anything small -- a portable
+    panel next to a pair of 4Ks is exactly that. }
+  BandTop := Inner.Top + IfThen(ShowRes, 33, 19);
+  BandBottom := Inner.Bottom - IfThen(ShowBadges, 21, 0);
+  Band := Rect(Inner.Left, BandTop, Inner.Right, BandBottom);
+
+  if (Band.Bottom - Band.Top) >= 14 then
+  begin
+    NumStr := IntToStr(FXR.DisplayOrdinal(Idx));
+    FBmp.FontName := UIFont;
+    FBmp.FontStyle := [fsBold];
+    FBmp.FontQuality := fqFineAntialiasing;
+
+    FBmp.FontHeight := Band.Bottom - Band.Top;
+    TW := FBmp.TextSize(NumStr).cx;
+    { Two-digit ordinals can be wider than the band on a narrow tile. }
+    if (TW > Band.Right - Band.Left) and (TW > 0) then
+    begin
+      FBmp.FontHeight := Max(13,
+        (Band.Bottom - Band.Top) * (Band.Right - Band.Left) div TW);
+      TW := FBmp.TextSize(NumStr).cx;
+    end;
+    TH := FBmp.TextSize(NumStr).cy;
+
+    FBmp.TextOut((Band.Left + Band.Right - TW) div 2,
+      (Band.Top + Band.Bottom - TH) div 2,
+      NumStr, ToBGRA(IfThen(Ena, clTextBright, clTextFaint),
+        IfThen(Ena, 36, 26)));
+  end;
 
   { Output name. }
   NameStr := FXR.Outputs[Idx].Name;
@@ -741,12 +764,11 @@ begin
     ResStr := Format('%d x %d  ·  %s Hz', [LW, LH, RateToStr(FXR.Outputs[Idx].DesiredRate)])
   else
     ResStr := 'disabled';
-  if (FBmp.TextSize(ResStr).cx < Inner.Right - Inner.Left) and
-     (Inner.Bottom - Inner.Top > 34) then
+  if ShowRes and (FBmp.TextSize(ResStr).cx < Inner.Right - Inner.Left) then
     FBmp.TextOut(Inner.Left, Inner.Top + 17, ResStr, ToBGRA(clTextDim));
 
   { Badges along the bottom. }
-  if Inner.Bottom - Inner.Top > 52 then
+  if ShowBadges then
   begin
     BadgeX := Inner.Left;
     BadgeY := Inner.Bottom - 17;
