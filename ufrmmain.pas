@@ -37,9 +37,11 @@ type
     cboResolution: TComboBox;
     cboRotation: TComboBox;
     cboScale: TComboBox;
+    cboTextScale: TComboBox;
     cboTouchDevice: TComboBox;
     cboTouchOutput: TComboBox;
     chkAutostart: TCheckBox;
+    chkFractional: TCheckBox;
     chkEnabled: TCheckBox;
     chkPrimary: TCheckBox;
     lblAutoHint: TBCLabel;
@@ -50,7 +52,10 @@ type
     lblResCap: TBCLabel;
     lblRotCap: TBCLabel;
     lblSecDisplay: TBCLabel;
+    lblFracHint: TBCLabel;
     lblScaleCap: TBCLabel;
+    lblSecScale: TBCLabel;
+    lblTextCap: TBCLabel;
     lblSecSave: TBCLabel;
     lblSecTouch: TBCLabel;
     lblStatus: TBCLabel;
@@ -76,9 +81,11 @@ type
     procedure cboResolutionChange(Sender: TObject);
     procedure cboRotationChange(Sender: TObject);
     procedure cboScaleChange(Sender: TObject);
+    procedure cboTextScaleChange(Sender: TObject);
     procedure cboTouchDeviceChange(Sender: TObject);
     procedure cboTouchOutputChange(Sender: TObject);
     procedure chkAutostartChange(Sender: TObject);
+    procedure chkFractionalChange(Sender: TObject);
     procedure chkEnabledChange(Sender: TObject);
     procedure chkPrimaryChange(Sender: TObject);
     procedure FormCreate(Sender: TObject);
@@ -100,6 +107,7 @@ type
     procedure PopulateSide;
     procedure PopulateTouchPanel;
     procedure PopulateScale;
+    procedure UpdateFracHint;
     procedure UpdateToggleCaption;
     procedure UpdateStatus;
     procedure SetStatus(const S: string; Col: TColor);
@@ -201,6 +209,11 @@ begin
   SkinLabel(lblDevCap, clTextDim, 12, False, bcaLeftCenter, clSurface);
   SkinLabel(lblMapCap, clTextDim, 12, False, bcaLeftCenter, clSurface);
   SkinLabel(lblScaleCap, clTextDim, 12, False, bcaLeftCenter, clSurface);
+  SkinLabel(lblTextCap, clTextDim, 12, False, bcaLeftCenter, clSurface);
+  SkinLabel(lblSecScale, clTouchHi, 12, True, bcaLeftCenter, clSurface);
+  SkinLabel(lblFracHint, clTextFaint, 11, False, bcaLeftTop, clSurface);
+  lblFracHint.FontEx.WordBreak := True;
+  lblFracHint.FontEx.SingleLine := False;
   SkinLabel(lblTouchInfo, clTextDim, 12, False, bcaLeftTop, clSurface);
   SkinLabel(lblAutoHint, clTextFaint, 11, False, bcaLeftTop, clSurface);
   lblTouchInfo.FontEx.WordBreak := True;
@@ -225,10 +238,12 @@ begin
   SkinCombo(cboTouchOutput);
   SkinCombo(cboProfile);
   SkinCombo(cboScale);
+  SkinCombo(cboTextScale);
 
   SkinCheck(chkEnabled);
   SkinCheck(chkPrimary);
   SkinCheck(chkAutostart);
+  SkinCheck(chkFractional);
 end;
 
 procedure TfrmMain.SetStatus(const S: string; Col: TColor);
@@ -429,19 +444,30 @@ var
 begin
   FLoading := True;
   try
-    cboScale.Items.Clear;
-    cboScale.Items.AddObject('Auto', TObject(PtrInt(0)));
-    for i := 4 to 16 do              // 100% .. 400% in 25% steps
-      cboScale.Items.AddObject(IntToStr(i * 25) + '%', TObject(PtrInt(i * 25)));
-
     FS := DefaultFormatSettings;
     FS.DecimalSeparator := '.';
+
+    { Whole multiples only -- scaling-factor is an unsigned integer in the
+      schema and rejects anything else outright. Smuggling the remainder into
+      the font size, as this used to, was dishonest: it changes text and
+      nothing else, which is not what "interface scale" means. }
+    cboScale.Items.Clear;
+    cboScale.Items.AddObject('Auto', TObject(PtrInt(0)));
+    for i := 1 to 4 do
+      cboScale.Items.AddObject(IntToStr(i * 100) + '%', TObject(PtrInt(i)));
 
     Factor := 0;
     if FXR.Run('gsettings get org.cinnamon.desktop.interface scaling-factor',
                Output) then
       Factor := StrToIntDef(Trim(StringReplace(Trim(Output), 'uint32', '',
         [rfReplaceAll])), 0);
+    if (Factor < 0) or (Factor > 4) then Factor := 0;
+    cboScale.ItemIndex := Factor;
+
+    { Text scale is a genuine double (0.5 - 3.0), so it can step finely. }
+    cboTextScale.Items.Clear;
+    for i := 2 to 12 do
+      cboTextScale.Items.AddObject(IntToStr(i * 25) + '%', TObject(PtrInt(i * 25)));
 
     TextScale := 1.0;
     if FXR.Run('gsettings get org.cinnamon.desktop.interface text-scaling-factor',
@@ -449,73 +475,116 @@ begin
       if not TryStrToFloat(Trim(Output), TextScale, FS) then
         TextScale := 1.0;
 
-    if Factor = 0 then
-      cboScale.ItemIndex := 0
-    else
-    begin
-      Pct := Round(Factor * TextScale * 100);
-      Best := 0;
-      BestDiff := MaxInt;
-      for i := 0 to cboScale.Items.Count - 1 do
-        if PtrInt(cboScale.Items.Objects[i]) > 0 then
-          if Abs(PtrInt(cboScale.Items.Objects[i]) - Pct) < BestDiff then
-          begin
-            BestDiff := Abs(PtrInt(cboScale.Items.Objects[i]) - Pct);
-            Best := i;
-          end;
-      cboScale.ItemIndex := Best;
-    end;
+    Pct := Round(TextScale * 100);
+    Best := 0;
+    BestDiff := MaxInt;
+    for i := 0 to cboTextScale.Items.Count - 1 do
+      if Abs(PtrInt(cboTextScale.Items.Objects[i]) - Pct) < BestDiff then
+      begin
+        BestDiff := Abs(PtrInt(cboTextScale.Items.Objects[i]) - Pct);
+        Best := i;
+      end;
+    cboTextScale.ItemIndex := Best;
+
+    chkFractional.Checked := False;
+    if FXR.Run('gsettings get org.cinnamon.muffin experimental-features', Output) then
+      chkFractional.Checked := Pos('x11-randr-fractional-scaling', Output) > 0;
+    UpdateFracHint;
   finally
     FLoading := False;
   end;
 end;
 
+procedure TfrmMain.UpdateFracHint;
+begin
+  if chkFractional.Checked then
+    lblFracHint.Caption :=
+      'On. Per-monitor fractional scales appear in Cinnamon''s own display ' +
+      'settings. Muffin applies them, not xrandr, so they are not reflected ' +
+      'on the canvas here. Restart Cinnamon to take effect.'
+  else
+    lblFracHint.Caption :=
+      'Off. Turning this on unlocks true per-monitor fractional scaling in ' +
+      'Cinnamon display settings - unlike text scale it resizes the whole ' +
+      'interface, not just text. Experimental.';
+end;
+
 procedure TfrmMain.cboScaleChange(Sender: TObject);
 var
-  Output, TextStr: string;
-  Pct, Factor: integer;
-  TextScale: double;
-  FS: TFormatSettings;
+  Output: string;
+  Factor: integer;
 begin
   if FLoading then Exit;
   if cboScale.ItemIndex < 0 then Exit;
+  Factor := PtrInt(cboScale.Items.Objects[cboScale.ItemIndex]);
 
-  FS := DefaultFormatSettings;
-  FS.DecimalSeparator := '.';
-  Pct := PtrInt(cboScale.Items.Objects[cboScale.ItemIndex]);
-
-  if Pct = 0 then
+  if not FXR.Run(Format('gsettings set org.cinnamon.desktop.interface ' +
+    'scaling-factor %d', [Factor]), Output) then
   begin
-    FXR.Run('gsettings set org.cinnamon.desktop.interface scaling-factor 0', Output);
-    FXR.Run('gsettings reset org.cinnamon.desktop.interface text-scaling-factor', Output);
-    SetStatus('Interface scale left to the desktop', clTextDim);
+    SetStatus('Could not set interface scale: ' + Output, clDanger);
     Exit;
   end;
 
-  { scaling-factor is an unsigned INTEGER -- it rejects 1.5 outright -- which
-    is why Cinnamon's own panel only offers whole multiples. Whole multiples
-    go there, and the remainder rides on text-scaling-factor, which is a
-    double. The catch is that the fractional part only enlarges text, not
-    widget and icon geometry, so 150% is not the same thing as a true 1.5x
-    desktop. }
-  Factor := Pct div 100;
-  if Factor < 1 then Factor := 1;
-  TextScale := Pct / 100 / Factor;
-  if TextScale < 0.5 then TextScale := 0.5;
-  if TextScale > 3.0 then TextScale := 3.0;
+  if Factor = 0 then
+    SetStatus('Interface scale left to the desktop', clTextDim)
+  else
+    SetStatus(Format('Interface scale %d00%% - some apps pick it up only ' +
+      'when restarted', [Factor]), clOkay);
+end;
 
-  TextStr := FormatFloat('0.####', TextScale, FS);
-  FXR.Run(Format('gsettings set org.cinnamon.desktop.interface scaling-factor %d',
-    [Factor]), Output);
-  FXR.Run(Format('gsettings set org.cinnamon.desktop.interface ' +
-    'text-scaling-factor %s', [TextStr]), Output);
+procedure TfrmMain.cboTextScaleChange(Sender: TObject);
+var
+  Output, ValStr: string;
+  Pct: integer;
+  FS: TFormatSettings;
+begin
+  if FLoading then Exit;
+  if cboTextScale.ItemIndex < 0 then Exit;
 
-  if Pct mod 100 = 0 then
-    SetStatus(Format('Interface scale %d%% — some apps pick it up only when restarted',
+  FS := DefaultFormatSettings;
+  FS.DecimalSeparator := '.';
+  Pct := PtrInt(cboTextScale.Items.Objects[cboTextScale.ItemIndex]);
+  ValStr := FormatFloat('0.####', Pct / 100, FS);
+
+  if FXR.Run(Format('gsettings set org.cinnamon.desktop.interface ' +
+    'text-scaling-factor %s', [ValStr]), Output) then
+    SetStatus(Format('Text scale %d%% - text only, not icons or controls',
       [Pct]), clOkay)
   else
-    SetStatus(Format('Interface scale %d%% (%dx UI, %s× text — the part between '
-      + 'whole multiples scales text only)', [Pct, Factor, TextStr]), clWarn);
+    SetStatus('Could not set text scale: ' + Output, clDanger);
+end;
+
+procedure TfrmMain.chkFractionalChange(Sender: TObject);
+var
+  Output, Val: string;
+begin
+  if FLoading then Exit;
+
+  { Both flags together: scale-monitor-framebuffer is what actually lets
+    muffin scale a monitor, x11-randr-fractional-scaling is what surfaces the
+    controls on X11. Cinnamon's own display module enables exactly this pair. }
+  if chkFractional.Checked then
+    Val := '[''scale-monitor-framebuffer'', ''x11-randr-fractional-scaling'']'
+  else
+    Val := '[]';
+
+  { Double-quote for the shell, single-quote the array elements, so the
+    brackets and the space between them survive the trip. }
+  if FXR.Run('gsettings set org.cinnamon.muffin experimental-features "' +
+    Val + '"', Output) then
+  begin
+    UpdateFracHint;
+    if chkFractional.Checked then
+      SetStatus('Fractional scaling enabled - restart Cinnamon (Ctrl+Alt+Esc), ' +
+        'then set per-monitor scales in Cinnamon display settings', clWarn)
+    else
+      SetStatus('Fractional scaling disabled - restart Cinnamon to apply', clWarn);
+  end
+  else
+  begin
+    SetStatus('Could not change muffin experimental-features: ' + Output, clDanger);
+    chkFractional.Checked := not chkFractional.Checked;
+  end;
 end;
 
 procedure TfrmMain.UpdateToggleCaption;

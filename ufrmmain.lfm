@@ -1,10 +1,10 @@
 object frmMain: TfrmMain
   Left = 220
-  Height = 880
+  Height = 940
   Top = 140
   Width = 1400
   Caption = 'LazRandR'
-  ClientHeight = 880
+  ClientHeight = 940
   ClientWidth = 1400
   Constraints.MinHeight = 620
   Constraints.MinWidth = 1040
@@ -51,7 +51,7 @@ object frmMain: TfrmMain
   object pnlFooter: TBCPanel
     Left = 0
     Height = 66
-    Top = 814
+    Top = 874
     Width = 1400
     Align = alBottom
     BevelInner = bvNone
@@ -102,7 +102,7 @@ object frmMain: TfrmMain
   end
   object pnlSide: TBCPanel
     Left = 1060
-    Height = 748
+    Height = 808
     Top = 66
     Width = 340
     Align = alRight
@@ -113,7 +113,7 @@ object frmMain: TfrmMain
       AutoSize = False
       Left = 16
       Height = 16
-      Top = 14
+      Top = 12
       Width = 308
       Caption = 'DISPLAY'
     end
@@ -121,7 +121,7 @@ object frmMain: TfrmMain
       AutoSize = False
       Left = 16
       Height = 24
-      Top = 34
+      Top = 30
       Width = 308
       Caption = 'No display selected'
     end
@@ -129,14 +129,14 @@ object frmMain: TfrmMain
       AutoSize = False
       Left = 16
       Height = 15
-      Top = 68
+      Top = 60
       Width = 308
       Caption = 'Resolution'
     end
     object cboResolution: TComboBox
       Left = 16
       Height = 30
-      Top = 86
+      Top = 76
       Width = 308
       ItemHeight = 22
       Style = csDropDownList
@@ -147,14 +147,14 @@ object frmMain: TfrmMain
       AutoSize = False
       Left = 16
       Height = 15
-      Top = 124
+      Top = 110
       Width = 308
       Caption = 'Refresh rate'
     end
     object cboRate: TComboBox
       Left = 16
       Height = 30
-      Top = 142
+      Top = 126
       Width = 308
       ItemHeight = 22
       Style = csDropDownList
@@ -165,14 +165,14 @@ object frmMain: TfrmMain
       AutoSize = False
       Left = 16
       Height = 15
-      Top = 180
+      Top = 160
       Width = 308
       Caption = 'Orientation'
     end
     object cboRotation: TComboBox
       Left = 16
       Height = 30
-      Top = 198
+      Top = 176
       Width = 308
       ItemHeight = 22
       Style = csDropDownList
@@ -182,7 +182,7 @@ object frmMain: TfrmMain
     object chkEnabled: TCheckBox
       Left = 16
       Height = 22
-      Top = 238
+      Top = 212
       Width = 150
       Caption = 'Enabled'
       TabOrder = 3
@@ -191,7 +191,7 @@ object frmMain: TfrmMain
     object chkPrimary: TCheckBox
       Left = 176
       Height = 22
-      Top = 238
+      Top = 212
       Width = 150
       Caption = 'Primary'
       TabOrder = 4
@@ -201,7 +201,7 @@ object frmMain: TfrmMain
       AutoSize = False
       Left = 16
       Height = 16
-      Top = 284
+      Top = 250
       Width = 308
       Caption = 'TOUCH INPUT'
     end
@@ -209,7 +209,7 @@ object frmMain: TfrmMain
       AutoSize = False
       Left = 16
       Height = 32
-      Top = 306
+      Top = 268
       Width = 308
       Caption = 'Scanning for touch devices...'
     end
@@ -217,14 +217,14 @@ object frmMain: TfrmMain
       AutoSize = False
       Left = 16
       Height = 15
-      Top = 344
+      Top = 302
       Width = 308
       Caption = 'Device'
     end
     object cboTouchDevice: TComboBox
       Left = 16
       Height = 30
-      Top = 362
+      Top = 318
       Width = 308
       ItemHeight = 22
       Style = csDropDownList
@@ -235,14 +235,14 @@ object frmMain: TfrmMain
       AutoSize = False
       Left = 16
       Height = 15
-      Top = 400
+      Top = 352
       Width = 308
       Caption = 'Confine to display'
     end
     object cboTouchOutput: TComboBox
       Left = 16
       Height = 30
-      Top = 418
+      Top = 368
       Width = 308
       ItemHeight = 22
       Style = csDropDownList
@@ -252,7 +252,7 @@ object frmMain: TfrmMain
     object btnMapSelected: TBCButton
       Left = 16
       Height = 32
-      Top = 456
+      Top = 402
       Width = 186
       Caption = 'Map to selected'
       OnClick = btnMapSelectedClick
@@ -260,7 +260,7 @@ object frmMain: TfrmMain
     object btnToggleDevice: TBCButton
       Left = 210
       Height = 32
-      Top = 456
+      Top = 402
       Width = 114
       Caption = 'Disable'
       OnClick = btnToggleDeviceClick
@@ -268,33 +268,76 @@ object frmMain: TfrmMain
     object lblScaleCap: TBCLabel
       AutoSize = False
       Left = 16
-      Height = 15
-      Top = 498
+      Height = 14
+      Top = 466
       Width = 308
-      Caption = 'Interface scale (all displays, 25% steps)'
+      Caption = 'Interface scale (whole multiples only)'
     end
     object cboScale: TComboBox
       Left = 16
-      Height = 30
-      Top = 516
+      Height = 28
+      Top = 482
       Width = 308
       ItemHeight = 22
       Style = csDropDownList
       TabOrder = 12
       OnChange = cboScaleChange
     end
+    object lblTextCap: TBCLabel
+      AutoSize = False
+      Left = 16
+      Height = 14
+      Top = 516
+      Width = 308
+      Caption = 'Text scale (text only, any size)'
+    end
+    object cboTextScale: TComboBox
+      Left = 16
+      Height = 28
+      Top = 532
+      Width = 308
+      ItemHeight = 22
+      Style = csDropDownList
+      TabOrder = 13
+      OnChange = cboTextScaleChange
+    end
+    object chkFractional: TCheckBox
+      Left = 16
+      Height = 22
+      Top = 568
+      Width = 308
+      Caption = 'Enable fractional scaling (experimental)'
+      TabOrder = 14
+      OnChange = chkFractionalChange
+    end
+    object lblFracHint: TBCLabel
+      AutoSize = False
+      Left = 16
+      Height = 44
+      Top = 592
+      Width = 308
+      Caption = 'hint'
+    end
+    object lblSecScale: TBCLabel
+      AutoSize = False
+      Left = 16
+      Height = 16
+      Top = 446
+      Width = 308
+      Caption = 'SCALING'
+    end
     object lblSecSave: TBCLabel
       AutoSize = False
       Left = 16
       Height = 16
-      Top = 562
+      Top = 644
       Width = 308
       Caption = 'PERSISTENCE'
     end
     object cboProfile: TComboBox
       Left = 16
       Height = 30
-      Top = 584
+      Top = 662
       Width = 308
       ItemHeight = 22
       TabOrder = 8
@@ -302,7 +345,7 @@ object frmMain: TfrmMain
     object btnSaveProfile: TBCButton
       Left = 16
       Height = 32
-      Top = 622
+      Top = 696
       Width = 150
       Caption = 'Save'
       OnClick = btnSaveProfileClick
@@ -310,7 +353,7 @@ object frmMain: TfrmMain
     object btnLoadProfile: TBCButton
       Left = 174
       Height = 32
-      Top = 622
+      Top = 696
       Width = 150
       Caption = 'Load'
       OnClick = btnLoadProfileClick
@@ -318,7 +361,7 @@ object frmMain: TfrmMain
     object chkAutostart: TCheckBox
       Left = 16
       Height = 22
-      Top = 664
+      Top = 734
       Width = 308
       Caption = 'Re-apply at every login'
       TabOrder = 11
@@ -328,14 +371,14 @@ object frmMain: TfrmMain
       AutoSize = False
       Left = 16
       Height = 44
-      Top = 690
+      Top = 758
       Width = 308
       Caption = 'Writes a script that restores this layout and the touch mapping.'
     end
   end
   object pnlCanvasHost: TPanel
     Left = 0
-    Height = 748
+    Height = 808
     Top = 66
     Width = 1060
     Align = alClient
