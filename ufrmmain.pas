@@ -423,35 +423,48 @@ end;
 procedure TfrmMain.PopulateScale;
 var
   Output: string;
-  V, i: integer;
+  Factor, i, Pct, Best, BestDiff: integer;
+  TextScale: double;
+  FS: TFormatSettings;
 begin
   FLoading := True;
   try
     cboScale.Items.Clear;
-    cboScale.Items.Add('Auto');
-    cboScale.Items.Add('100%');
-    cboScale.Items.Add('200%');
-    cboScale.Items.Add('300%');
-    cboScale.Items.Add('400%');
+    cboScale.Items.AddObject('Auto', TObject(PtrInt(0)));
+    for i := 4 to 16 do              // 100% .. 400% in 25% steps
+      cboScale.Items.AddObject(IntToStr(i * 25) + '%', TObject(PtrInt(i * 25)));
 
-    { Cinnamon's own display panel drives this same key. On X11 the interface
-      scale is a single global factor, not per-monitor -- there is no honest
-      way to offer it per screen here. }
-    V := 0;
+    FS := DefaultFormatSettings;
+    FS.DecimalSeparator := '.';
+
+    Factor := 0;
     if FXR.Run('gsettings get org.cinnamon.desktop.interface scaling-factor',
                Output) then
+      Factor := StrToIntDef(Trim(StringReplace(Trim(Output), 'uint32', '',
+        [rfReplaceAll])), 0);
+
+    TextScale := 1.0;
+    if FXR.Run('gsettings get org.cinnamon.desktop.interface text-scaling-factor',
+               Output) then
+      if not TryStrToFloat(Trim(Output), TextScale, FS) then
+        TextScale := 1.0;
+
+    if Factor = 0 then
+      cboScale.ItemIndex := 0
+    else
     begin
-      Output := Trim(Output);
-      for i := Length(Output) downto 1 do
-        if not (Output[i] in ['0'..'9']) then
-        begin
-          Output := Copy(Output, i + 1, MaxInt);
-          Break;
-        end;
-      V := StrToIntDef(Trim(Output), 0);
+      Pct := Round(Factor * TextScale * 100);
+      Best := 0;
+      BestDiff := MaxInt;
+      for i := 0 to cboScale.Items.Count - 1 do
+        if PtrInt(cboScale.Items.Objects[i]) > 0 then
+          if Abs(PtrInt(cboScale.Items.Objects[i]) - Pct) < BestDiff then
+          begin
+            BestDiff := Abs(PtrInt(cboScale.Items.Objects[i]) - Pct);
+            Best := i;
+          end;
+      cboScale.ItemIndex := Best;
     end;
-    if (V < 0) or (V > 4) then V := 0;
-    cboScale.ItemIndex := V;
   finally
     FLoading := False;
   end;
@@ -459,17 +472,50 @@ end;
 
 procedure TfrmMain.cboScaleChange(Sender: TObject);
 var
-  Output: string;
+  Output, TextStr: string;
+  Pct, Factor: integer;
+  TextScale: double;
+  FS: TFormatSettings;
 begin
   if FLoading then Exit;
   if cboScale.ItemIndex < 0 then Exit;
 
-  if FXR.Run(Format('gsettings set org.cinnamon.desktop.interface ' +
-    'scaling-factor %d', [cboScale.ItemIndex]), Output) then
-    SetStatus('Interface scale set to ' + cboScale.Items[cboScale.ItemIndex] +
-      ' — some apps pick it up only when restarted', clOkay)
+  FS := DefaultFormatSettings;
+  FS.DecimalSeparator := '.';
+  Pct := PtrInt(cboScale.Items.Objects[cboScale.ItemIndex]);
+
+  if Pct = 0 then
+  begin
+    FXR.Run('gsettings set org.cinnamon.desktop.interface scaling-factor 0', Output);
+    FXR.Run('gsettings reset org.cinnamon.desktop.interface text-scaling-factor', Output);
+    SetStatus('Interface scale left to the desktop', clTextDim);
+    Exit;
+  end;
+
+  { scaling-factor is an unsigned INTEGER -- it rejects 1.5 outright -- which
+    is why Cinnamon's own panel only offers whole multiples. Whole multiples
+    go there, and the remainder rides on text-scaling-factor, which is a
+    double. The catch is that the fractional part only enlarges text, not
+    widget and icon geometry, so 150% is not the same thing as a true 1.5x
+    desktop. }
+  Factor := Pct div 100;
+  if Factor < 1 then Factor := 1;
+  TextScale := Pct / 100 / Factor;
+  if TextScale < 0.5 then TextScale := 0.5;
+  if TextScale > 3.0 then TextScale := 3.0;
+
+  TextStr := FormatFloat('0.####', TextScale, FS);
+  FXR.Run(Format('gsettings set org.cinnamon.desktop.interface scaling-factor %d',
+    [Factor]), Output);
+  FXR.Run(Format('gsettings set org.cinnamon.desktop.interface ' +
+    'text-scaling-factor %s', [TextStr]), Output);
+
+  if Pct mod 100 = 0 then
+    SetStatus(Format('Interface scale %d%% — some apps pick it up only when restarted',
+      [Pct]), clOkay)
   else
-    SetStatus('Could not set interface scale: ' + Output, clDanger);
+    SetStatus(Format('Interface scale %d%% (%dx UI, %s× text — the part between '
+      + 'whole multiples scales text only)', [Pct, Factor, TextStr]), clWarn);
 end;
 
 procedure TfrmMain.UpdateToggleCaption;

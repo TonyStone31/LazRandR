@@ -633,10 +633,16 @@ end;
 
 procedure TXRandR.DesiredScreenSize(out W, H: integer);
 var
-  i, R, B, LW, LH: integer;
+  i, LW, LH: integer;
+  MinX, MinY, MaxX, MaxY: integer;
+  Any: boolean;
 begin
   W := 0;
   H := 0;
+  MinX := MaxInt; MinY := MaxInt;
+  MaxX := -MaxInt; MaxY := -MaxInt;
+  Any := False;
+
   for i := 0 to High(FOutputs) do
   begin
     if not FOutputs[i].DesiredEnabled then Continue;
@@ -650,11 +656,21 @@ begin
       LW := FOutputs[i].DesiredModeW;
       LH := FOutputs[i].DesiredModeH;
     end;
-    R := FOutputs[i].DesiredX + LW;
-    B := FOutputs[i].DesiredY + LH;
-    if R > W then W := R;
-    if B > H then H := B;
+    Any := True;
+    if FOutputs[i].DesiredX < MinX then MinX := FOutputs[i].DesiredX;
+    if FOutputs[i].DesiredY < MinY then MinY := FOutputs[i].DesiredY;
+    if FOutputs[i].DesiredX + LW > MaxX then MaxX := FOutputs[i].DesiredX + LW;
+    if FOutputs[i].DesiredY + LH > MaxY then MaxY := FOutputs[i].DesiredY + LH;
   end;
+
+  if not Any then Exit;
+
+  { The EXTENT, not the furthest edge. Applying always pulls the layout back
+    to the origin first, so a layout whose leftmost screen sits at x=3840
+    needs 3840 of framebuffer, not 7680 -- reporting the latter overstated
+    the requirement and could wrongly claim the layout would not fit. }
+  W := MaxX - MinX;
+  H := MaxY - MinY;
 end;
 
 procedure TXRandR.SetDesiredRotationAboutCentre(Idx: integer; NewRot: TRotation);
@@ -748,11 +764,24 @@ end;
 
 function TXRandR.BuildApplyCommand: string;
 var
-  i: integer;
+  i, DW, DH: integer;
   S: string;
 begin
   NormaliseDesiredOrigin;
   S := 'xrandr';
+
+  { Once this driver has refused to grow the X screen, shrinking it is a
+    one-way door: apply a layout that needs less width and that width may
+    never come back this session. So pin the framebuffer at the largest size
+    seen instead of letting xrandr size it down to fit. }
+  if FGrowthBlocked then
+  begin
+    DesiredScreenSize(DW, DH);
+    if DW < FScreenW then DW := FScreenW;
+    if DH < FScreenH then DH := FScreenH;
+    if (DW > 0) and (DH > 0) then
+      S := S + ' --fb ' + IntToStr(DW) + 'x' + IntToStr(DH);
+  end;
   for i := 0 to High(FOutputs) do
   begin
     if not FOutputs[i].Connected and not FOutputs[i].Active then Continue;

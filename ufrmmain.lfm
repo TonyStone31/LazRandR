@@ -271,7 +271,7 @@ object frmMain: TfrmMain
       Height = 15
       Top = 498
       Width = 308
-      Caption = 'Interface scale (all displays)'
+      Caption = 'Interface scale (all displays, 25% steps)'
     end
     object cboScale: TComboBox
       Left = 16
