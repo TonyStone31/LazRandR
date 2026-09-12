@@ -65,6 +65,7 @@ type
     procedure DrawTrayTile(Idx, Slot: integer);
     function TileHasButtons(Idx: integer): boolean;
     function TileButtonRect(Idx, N: integer): TRect;
+    function TileButtonsStack(Idx: integer): boolean;
     function TileButtonAt(Idx, CX, CY: integer): integer;
     procedure DrawTileButtons(Idx: integer);
     function OutputHasTouch(Idx: integer): boolean;
@@ -154,8 +155,17 @@ const
     breaks the flow of arranging screens. }
   TileBtnSize = 28;
   TileBtnGap = 6;
-  TileBtnMinW = 150;      // tile must be at least this big to carry them
-  TileBtnMinH = 92;
+  TileBtnMargin = 9;
+  TileBtnRun = 3 * TileBtnSize + 2 * TileBtnGap;   // length of the row
+  { Sits below the big screen number rather than across it. A fixed offset
+    from the tile's centre, so it stays put when the tile changes shape. }
+  TileBtnDrop = 74;
+  { Only needs to fit one button. A fixed "wide enough for three in a row"
+    minimum meant rotating a 4K into portrait made the tile too narrow, the
+    buttons vanished, and the rotate button could not be clicked a second
+    time -- so rotation could never be cycled past the first step. They
+    stack vertically instead when there is no room for a row. }
+  TileBtnMinSide = TileBtnSize + TileBtnMargin * 2;
 
 constructor TLayoutCanvas.Create(AOwner: TComponent);
 begin
@@ -710,7 +720,8 @@ begin
   TH := FBmp.TextSize(NumStr).cy;
   FBmp.TextOut((R.Left + R.Right - TW) div 2,
     (R.Top + R.Bottom - TH) div 2,
-    NumStr, ToBGRA(IfThen(Ena, clTextBright, clTextFaint), IfThen(Ena, 36, 26)));
+    NumStr, ToBGRA(IfThen(Ena, clTextBright, clTextFaint),
+      IfThen(Ena, 36, 26)));
 
   Inner := Rect(R.Left + 10, R.Top + 8, R.Right - 10, R.Bottom - 8);
   if Inner.Right <= Inner.Left then Exit;
@@ -758,31 +769,67 @@ begin
   if not FXR.Outputs[Idx].DesiredEnabled then Exit;
   if Idx <> FSelected then Exit;
   R := TileRect(Idx);
-  Result := (R.Right - R.Left >= TileBtnMinW) and
-            (R.Bottom - R.Top >= TileBtnMinH);
+  if (R.Right - R.Left) < (TileBtnRun + TileBtnMargin * 2) then
+    { stacked: needs height for three, width for one }
+    Result := (R.Right - R.Left >= TileBtnMinSide) and
+              (R.Bottom - R.Top >= TileBtnRun + TileBtnMargin * 2)
+  else
+    Result := (R.Bottom - R.Top >= TileBtnMinSide);
+end;
+
+function TLayoutCanvas.TileButtonsStack(Idx: integer): boolean;
+var
+  R: TRect;
+begin
+  R := TileRect(Idx);
+  Result := (R.Right - R.Left) < (TileBtnRun + TileBtnMargin * 2);
 end;
 
 function TLayoutCanvas.TileButtonRect(Idx, N: integer): TRect;
 var
   R: TRect;
-  X, Y: integer;
+  X, Y, CX, CY: integer;
 begin
   R := TileRect(Idx);
-  { Laid out right to left from the tile's top-right corner. }
-  X := R.Right - 9 - (N + 1) * TileBtnSize - N * TileBtnGap;
-  Y := R.Top + 9;
+  CX := (R.Left + R.Right) div 2;
+  CY := (R.Top + R.Bottom) div 2;
+
+  { Centred on the tile, because the tile's CENTRE is the one point that does
+    not move when it rotates (rotation is applied about the centre) and the
+    view is left alone on a quick-control click. Anchoring to a corner meant
+    a 4K flipping to portrait yanked the button sideways out from under the
+    pointer, so rotation could not be cycled by clicking repeatedly. }
+  if TileButtonsStack(Idx) then
+  begin
+    X := CX - TileBtnSize div 2;
+    Y := CY - TileBtnRun div 2 + N * (TileBtnSize + TileBtnGap);
+  end
+  else
+  begin
+    X := CX - TileBtnRun div 2 + N * (TileBtnSize + TileBtnGap);
+    Y := CY - TileBtnSize div 2;
+    { Clear of the screen number when the tile is tall enough to allow it. }
+    if (R.Bottom - R.Top) >= (TileBtnDrop * 2 + TileBtnSize + TileBtnMargin) then
+      Inc(Y, TileBtnDrop);
+  end;
   Result := Rect(X, Y, X + TileBtnSize, Y + TileBtnSize);
 end;
 
 function TLayoutCanvas.TileButtonAt(Idx, CX, CY: integer): integer;
 var
   N: integer;
+  R: TRect;
 begin
   Result := -1;
   if not TileHasButtons(Idx) then Exit;
   for N := 0 to 2 do
-    if PtInRect(TileButtonRect(Idx, N), Point(CX, CY)) then
+  begin
+    R := TileButtonRect(Idx, N);
+    if (R.Left < TileRect(Idx).Left) or (R.Bottom > TileRect(Idx).Bottom) then
+      Continue;
+    if PtInRect(R, Point(CX, CY)) then
       Exit(N);
+  end;
 end;
 
 procedure TLayoutCanvas.DrawTileButtons(Idx: integer);
@@ -801,7 +848,8 @@ begin
   for N := 0 to 2 do
   begin
     R := TileButtonRect(Idx, N);
-    if R.Left < TileRect(Idx).Left then Continue;
+    if (R.Left < TileRect(Idx).Left) or (R.Bottom > TileRect(Idx).Bottom) then
+      Continue;
 
     Bg := clRaised;
     Fg := clText;
@@ -826,7 +874,12 @@ begin
     case N of
       0:
         begin
-          S := '90°';
+          { Shows the CURRENT angle rather than a fixed "90". Rotating steps
+            through 0 / 90 / 180 / 270, and two of those four are landscape
+            and two are portrait -- so the tile's shape only alternates and
+            the control looked like a two-way toggle. The number makes the
+            full cycle visible. }
+          S := RotationShort[FXR.Outputs[Idx].DesiredRotation] + '°';
           FBmp.FontName := UIFont;
           FBmp.FontStyle := [fsBold];
           FBmp.FontHeight := 12;
@@ -1077,14 +1130,22 @@ begin
     if BtnN >= 0 then
     begin
       case BtnN of
-        0: FXR.Outputs[FSelected].DesiredRotation :=
-             NextRotation(FXR.Outputs[FSelected].DesiredRotation);
+        0: FXR.SetDesiredRotationAboutCentre(FSelected,
+             NextRotation(FXR.Outputs[FSelected].DesiredRotation));
         1: for LW := 0 to High(FXR.Outputs) do
              FXR.Outputs[LW].DesiredPrimary := (LW = FSelected);
         2: if EnabledCount > 1 then
              FXR.Outputs[FSelected].DesiredEnabled := False;
       end;
-      ComputeScale(False);
+      { Rotating about the centre can push a coordinate negative, which X
+        will not accept, so the layout has to be pulled back to the origin.
+        Shift the VIEW by the same amount so nothing moves on screen -- and
+        deliberately do not refit, because recentring would slide the tile
+        out from under the pointer and the control could only ever be
+        clicked once. The view refits on the next drag, resize or reload. }
+      FXR.NormaliseDesiredOriginBy(NX, NY);
+      Dec(FOriginX, NX);
+      Dec(FOriginY, NY);
       Invalidate;
       if Assigned(FOnChanged) then FOnChanged(Self);
       if Assigned(FOnCommit) then FOnCommit(Self);

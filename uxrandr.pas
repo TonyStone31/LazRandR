@@ -79,6 +79,18 @@ type
     { Normalise the desired layout so the top-left corner sits at 0,0.
       X refuses negative coordinates. }
     procedure NormaliseDesiredOrigin;
+    { Same, but reports how far everything was shifted, so a caller that is
+      drawing the layout can move its view by the same amount and keep the
+      picture stationary on screen. }
+    procedure NormaliseDesiredOriginBy(out DX, DY: integer);
+
+    { Rotate an output about its own centre rather than its top-left corner.
+      Keeping the corner pinned makes a 4K flipping to portrait balloon down
+      and to the right, overlapping its neighbours and heaving the whole
+      layout's bounding box around -- which then recentres the canvas and
+      slides the tile out from under the pointer, so the rotate control
+      cannot be clicked twice in a row. }
+    procedure SetDesiredRotationAboutCentre(Idx: integer; NewRot: TRotation);
     { Reset all Desired* fields back to what the server currently reports. }
     procedure RevertDesired;
     function HasPendingChanges: boolean;
@@ -645,10 +657,55 @@ begin
   end;
 end;
 
+procedure TXRandR.SetDesiredRotationAboutCentre(Idx: integer; NewRot: TRotation);
+var
+  OldW, OldH, NewW, NewH, CX, CY: integer;
+begin
+  if (Idx < 0) or (Idx > High(FOutputs)) then Exit;
+
+  if RotationIsPortrait(FOutputs[Idx].DesiredRotation) then
+  begin
+    OldW := FOutputs[Idx].DesiredModeH;
+    OldH := FOutputs[Idx].DesiredModeW;
+  end
+  else
+  begin
+    OldW := FOutputs[Idx].DesiredModeW;
+    OldH := FOutputs[Idx].DesiredModeH;
+  end;
+
+  if RotationIsPortrait(NewRot) then
+  begin
+    NewW := FOutputs[Idx].DesiredModeH;
+    NewH := FOutputs[Idx].DesiredModeW;
+  end
+  else
+  begin
+    NewW := FOutputs[Idx].DesiredModeW;
+    NewH := FOutputs[Idx].DesiredModeH;
+  end;
+
+  CX := FOutputs[Idx].DesiredX + OldW div 2;
+  CY := FOutputs[Idx].DesiredY + OldH div 2;
+
+  FOutputs[Idx].DesiredRotation := NewRot;
+  FOutputs[Idx].DesiredX := CX - NewW div 2;
+  FOutputs[Idx].DesiredY := CY - NewH div 2;
+end;
+
 procedure TXRandR.NormaliseDesiredOrigin;
+var
+  DX, DY: integer;
+begin
+  NormaliseDesiredOriginBy(DX, DY);
+end;
+
+procedure TXRandR.NormaliseDesiredOriginBy(out DX, DY: integer);
 var
   i, MinX, MinY: integer;
 begin
+  DX := 0;
+  DY := 0;
   MinX := MaxInt;
   MinY := MaxInt;
   for i := 0 to High(FOutputs) do
@@ -665,6 +722,8 @@ begin
       Dec(FOutputs[i].DesiredX, MinX);
       Dec(FOutputs[i].DesiredY, MinY);
     end;
+  DX := MinX;
+  DY := MinY;
 end;
 
 function TXRandR.HasPendingChanges: boolean;

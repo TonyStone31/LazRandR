@@ -592,6 +592,12 @@ begin
   if (Idx < 0) or (cboResolution.ItemIndex < 0) then Exit;
 
   Packed_ := PtrInt(cboResolution.Items.Objects[cboResolution.ItemIndex]);
+  { Repopulating the combo can fire this handler again a moment later, after
+    FLoading has already been cleared -- GTK3 delivers the change
+    asynchronously. Bail out when the value is what it already was, or the
+    canvas gets refitted behind the user's back. }
+  if (FXR.Outputs[Idx].DesiredModeW = Packed_ div 100000) and
+     (FXR.Outputs[Idx].DesiredModeH = Packed_ mod 100000) then Exit;
   FXR.Outputs[Idx].DesiredModeW := Packed_ div 100000;
   FXR.Outputs[Idx].DesiredModeH := Packed_ mod 100000;
 
@@ -627,6 +633,8 @@ begin
     Inc(n);
     if n = cboRate.ItemIndex then
     begin
+      if SameRate(FXR.Outputs[Idx].DesiredRate, FXR.Outputs[Idx].Modes[i].Rate) then
+        Exit;      // see cboResolutionChange
       FXR.Outputs[Idx].DesiredRate := FXR.Outputs[Idx].Modes[i].Rate;
       Break;
     end;
@@ -641,7 +649,9 @@ begin
   if FLoading then Exit;
   Idx := SelectedOutput;
   if (Idx < 0) or (cboRotation.ItemIndex < 0) then Exit;
-  FXR.Outputs[Idx].DesiredRotation := TRotation(cboRotation.ItemIndex);
+  if FXR.Outputs[Idx].DesiredRotation = TRotation(cboRotation.ItemIndex) then
+    Exit;      // see cboResolutionChange
+  FXR.SetDesiredRotationAboutCentre(Idx, TRotation(cboRotation.ItemIndex));
   FCanvas.Rebuild;
   UpdateStatus;
 end;
@@ -653,6 +663,7 @@ begin
   if FLoading then Exit;
   Idx := SelectedOutput;
   if Idx < 0 then Exit;
+  if FXR.Outputs[Idx].DesiredEnabled = chkEnabled.Checked then Exit;
   FXR.Outputs[Idx].DesiredEnabled := chkEnabled.Checked;
   FCanvas.Rebuild;
   UpdateStatus;
@@ -665,6 +676,7 @@ begin
   if FLoading then Exit;
   Idx := SelectedOutput;
   if Idx < 0 then Exit;
+  if FXR.Outputs[Idx].DesiredPrimary = chkPrimary.Checked then Exit;
 
   { Exactly one output can be primary. }
   if chkPrimary.Checked then
