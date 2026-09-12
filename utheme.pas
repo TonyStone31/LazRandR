@@ -310,6 +310,7 @@ begin
   { Cheap layered shadow: a few progressively fainter, progressively larger
     rounded outlines under the tile. Much faster than a real gaussian blur
     and indistinguishable at these sizes. }
+  if Spread > 4 then Spread := 4;
   for i := Spread downto 1 do
   begin
     A := Round(Alpha * (1 - (i / (Spread + 1))) * 0.55);
@@ -322,29 +323,24 @@ end;
 
 procedure GlossHighlight(Bmp: TBGRABitmap; R: TRect; Radius: integer);
 var
-  H: integer;
   Grad: TBGRACustomScanner;
-  Clip: TBGRABitmap;
+  H: integer;
 begin
   H := (R.Bottom - R.Top) div 2;
   if H < 4 then Exit;
 
-  { Draw the sheen into a scratch layer masked by the same rounded shape so
-    it never bleeds outside the tile's corners. }
-  Clip := TBGRABitmap.Create(R.Right - R.Left, R.Bottom - R.Top, BGRAPixelTransparent);
+  { Fades to fully transparent by the halfway mark, so the same rounded
+    shape as the tile can be used directly -- no scratch bitmap, no mask.
+    This used to allocate a bitmap per tile per paint, which is what made
+    window resizing crawl. }
+  Grad := TBGRAGradientScanner.Create(
+    BGRA(255, 255, 255, 26), BGRA(255, 255, 255, 0), gtLinear,
+    PointF(0, R.Top), PointF(0, R.Top + H));
   try
-    Grad := TBGRAGradientScanner.Create(
-      BGRA(255, 255, 255, 26), BGRA(255, 255, 255, 0), gtLinear,
-      PointF(0, 0), PointF(0, H));
-    try
-      Clip.FillRoundRectAntialias(0, 0, Clip.Width, Clip.Height,
-        Radius, Radius, Grad);
-    finally
-      Grad.Free;
-    end;
-    Bmp.PutImage(R.Left, R.Top, Clip, dmDrawWithTransparency);
+    Bmp.FillRoundRectAntialias(R.Left, R.Top, R.Right, R.Bottom,
+      Radius, Radius, Grad);
   finally
-    Clip.Free;
+    Grad.Free;
   end;
 end;
 

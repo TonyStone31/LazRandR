@@ -102,6 +102,7 @@ type
     function SelectedOutput: integer;
 
     procedure CanvasChanged(Sender: TObject);
+    procedure CanvasCommit(Sender: TObject);
     procedure CanvasSelect(Sender: TObject; OutputIndex: integer);
 
     procedure DestroyIdentifiers;
@@ -132,7 +133,16 @@ begin
   FCanvas.Parent := pnlCanvasHost;
   FCanvas.Align := alClient;
   FCanvas.OnChanged := @CanvasChanged;
+  FCanvas.OnCommit := @CanvasCommit;
   FCanvas.OnSelect := @CanvasSelect;
+
+  { The BGRAControls panels and our canvas all repaint on every resize;
+    without this the window tears while being dragged. }
+  DoubleBuffered := True;
+  pnlCanvasHost.DoubleBuffered := True;
+  pnlSide.DoubleBuffered := True;
+  pnlHeader.DoubleBuffered := True;
+  pnlFooter.DoubleBuffered := True;
 
   ApplyTheming;
 
@@ -482,6 +492,15 @@ end;
 
 procedure TfrmMain.CanvasChanged(Sender: TObject);
 begin
+  UpdateStatus;
+end;
+
+procedure TfrmMain.CanvasCommit(Sender: TObject);
+begin
+  { A drag can switch a screen on or off via the inactive tray, so the side
+    panel has to catch up -- but only once the drag is over, not on every
+    mouse move. }
+  PopulateSide;
   UpdateStatus;
 end;
 

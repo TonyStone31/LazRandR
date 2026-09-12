@@ -24,6 +24,7 @@ type
   TLayoutCanvas = class(TCustomControl)
   private
     FBmp: TBGRABitmap;
+    FBack: TBGRABitmap;     // cached backdrop, redrawn only on resize
     FXR: TXRandR;
     FTouch: TTouchManager;
     FSelected: integer;
@@ -40,7 +41,9 @@ type
     FSnapXVal, FSnapYVal: integer;     // desktop coord the tile is stuck to
     FSnapXGuide, FSnapYGuide: integer; // desktop coord to draw the guide at
     FOnChanged: TNotifyEvent;
+    FOnCommit: TNotifyEvent;
     FOnSelect: TTileEvent;
+    FDragFromTray: boolean;
     FShowTouchBadges: boolean;
 
     procedure ComputeScale(Force: boolean = False);
@@ -51,6 +54,14 @@ type
     function TileAt(CX, CY: integer): integer;
     procedure ApplySnapping(Idx: integer; var NX, NY: integer);
     procedure ClampToNeighbours(Idx: integer; var NX, NY: integer);
+    function DisabledCount: integer;
+    function EnabledCount: integer;
+    function TrayVisible: boolean;
+    function TrayBounds: TRect;
+    function TraySlotRect(Slot: integer): TRect;
+    function TrayIndexAt(CX, CY: integer): integer;
+    procedure DrawTray;
+    procedure DrawTrayTile(Idx, Slot: integer);
     function OutputHasTouch(Idx: integer): boolean;
 
     procedure DrawBackdrop;
@@ -76,6 +87,9 @@ type
 
     property SelectedIndex: integer read FSelected;
     property OnChanged: TNotifyEvent read FOnChanged write FOnChanged;
+    { Fired once when a drag finishes, rather than on every mouse move, so
+      the side panel can refresh without being rebuilt mid-drag. }
+    property OnCommit: TNotifyEvent read FOnCommit write FOnCommit;
     property OnSelect: TTileEvent read FOnSelect write FOnSelect;
     property ShowTouchBadges: boolean read FShowTouchBadges write FShowTouchBadges;
   end;
@@ -93,9 +107,14 @@ const
 
     Acquire < Break gives hysteresis: once an edge is stuck it takes a
     deliberate pull to let go, so tiles stop jittering in and out of
-    alignment while you are still dragging. }
-  SnapAcquireCanvasPx = 26;
-  SnapBreakCanvasPx = 46;
+    alignment while you are still dragging.
+
+    Acquire is deliberately small. It is the distance the tile TELEPORTS when
+    it grabs, so a large value reads as the thing jumping out from under the
+    cursor. The holding power comes from Break instead, which costs nothing
+    visually. }
+  SnapAcquireCanvasPx = 12;
+  SnapBreakCanvasPx = 38;
 
   { How far a screen may be dragged beyond the others before it is stopped.
     Without this the layout's bounding box grows without limit, the canvas
@@ -106,12 +125,27 @@ const
   { Never let a tile get too small to grab, whatever the layout does. }
   MinTileCanvasPx = 26;
 
+  { The inactive tray.
+
+    A disabled output still carries whatever position it last had, so drawn
+    in desktop space it ends up underneath an active screen and invisible --
+    you only discover it by dragging the others off it. A disabled output has
+    no geometry on the X screen at all, so placing it in desktop space was
+    wrong to begin with. It gets parked here instead. }
+  TrayHeight = 96;
+  TrayPad = 12;
+  TrayTileW = 132;
+  TrayTileH = 56;
+  TrayGap = 10;
+  TrayLabelH = 18;
+
 constructor TLayoutCanvas.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
   ControlStyle := ControlStyle + [csOpaque];
   DoubleBuffered := True;
   FBmp := TBGRABitmap.Create(1, 1);
+  FBack := TBGRABitmap.Create(1, 1);
   FSelected := -1;
   FHot := -1;
   FDragIndex := -1;
@@ -124,6 +158,7 @@ end;
 destructor TLayoutCanvas.Destroy;
 begin
   FBmp.Free;
+  FBack.Free;
   inherited Destroy;
 end;
 
@@ -178,9 +213,11 @@ var
   Any: boolean;
   SX, SY: double;
   Ideal: double;
-  BoxW, BoxH, AvailW, AvailH: integer;
+  BoxW, BoxH, AvailW, AvailH, TrayTop: integer;
   Overflows: boolean;
 begin
+  TrayTop := 0;
+  if TrayVisible then TrayTop := TrayHeight;
   FOffX := 0;
   FOffY := 0;
   FOriginX := 0;
@@ -198,6 +235,9 @@ begin
   for i := 0 to High(FXR.Outputs) do
   begin
     if not FXR.Outputs[i].Connected then Continue;
+    { Disabled screens live in the tray, not the layout, so they must not
+      drag the bounding box around. }
+    if not FXR.Outputs[i].DesiredEnabled then Continue;
     LogicalSize(i, LW, LH);
     Any := True;
     MinX := Min(MinX, FXR.Outputs[i].DesiredX);
@@ -217,7 +257,7 @@ begin
   if (BoxW <= 0) or (BoxH <= 0) then Exit;
 
   AvailW := Max(40, Width - TilePad * 2);
-  AvailH := Max(40, Height - TilePad * 2);
+  AvailH := Max(40, Height - TilePad * 2 - TrayTop);
 
   SX := AvailW / BoxW;
   SY := AvailH / BoxH;
@@ -242,6 +282,7 @@ begin
   for i := 0 to High(FXR.Outputs) do
   begin
     if not FXR.Outputs[i].Connected then Continue;
+    if not FXR.Outputs[i].DesiredEnabled then Continue;
     LogicalSize(i, LW, LH);
     if Min(LW, LH) > 0 then
       FScale := Max(FScale, MinTileCanvasPx / Min(LW, LH));
@@ -250,7 +291,7 @@ begin
   FOriginX := MinX;
   FOriginY := MinY;
   FOffX := (Width - Round(BoxW * FScale)) div 2;
-  FOffY := (Height - Round(BoxH * FScale)) div 2;
+  FOffY := TrayTop + (Height - TrayTop - Round(BoxH * FScale)) div 2;
 end;
 
 function TLayoutCanvas.DesktopToCanvas(DX, DY: integer): TPoint;
@@ -292,6 +333,7 @@ begin
   for i := High(FXR.Outputs) downto 0 do
   begin
     if not FXR.Outputs[i].Connected then Continue;
+    if not FXR.Outputs[i].DesiredEnabled then Continue;
     R := TileRect(i);
     if PtInRect(R, Point(CX, CY)) then
       Exit(i);
@@ -307,6 +349,68 @@ begin
   for i := 0 to High(FTouch.Devices) do
     if FTouch.Devices[i].DesiredOutput = FXR.Outputs[Idx].Name then
       Exit(True);
+end;
+
+function TLayoutCanvas.DisabledCount: integer;
+var
+  i: integer;
+begin
+  Result := 0;
+  if FXR = nil then Exit;
+  for i := 0 to High(FXR.Outputs) do
+    if FXR.Outputs[i].Connected and not FXR.Outputs[i].DesiredEnabled then
+      Inc(Result);
+end;
+
+function TLayoutCanvas.EnabledCount: integer;
+var
+  i: integer;
+begin
+  Result := 0;
+  if FXR = nil then Exit;
+  for i := 0 to High(FXR.Outputs) do
+    if FXR.Outputs[i].Connected and FXR.Outputs[i].DesiredEnabled then
+      Inc(Result);
+end;
+
+function TLayoutCanvas.TrayVisible: boolean;
+begin
+  { Shown when something is parked, and also while dragging so there is
+    somewhere obvious to drop a screen you want switched off. }
+  Result := (DisabledCount > 0) or FDragging;
+end;
+
+function TLayoutCanvas.TrayBounds: TRect;
+begin
+  Result := Rect(0, 0, Width, TrayHeight);
+end;
+
+function TLayoutCanvas.TraySlotRect(Slot: integer): TRect;
+var
+  X, Y: integer;
+begin
+  X := TrayPad + Slot * (TrayTileW + TrayGap);
+  Y := TrayLabelH + TrayPad;
+  Result := Rect(X, Y, X + TrayTileW, Y + TrayTileH);
+end;
+
+function TLayoutCanvas.TrayIndexAt(CX, CY: integer): integer;
+var
+  i, Slot: integer;
+begin
+  Result := -1;
+  if (FXR = nil) or not TrayVisible then Exit;
+  if not PtInRect(TrayBounds, Point(CX, CY)) then Exit;
+
+  Slot := 0;
+  for i := 0 to High(FXR.Outputs) do
+  begin
+    if not FXR.Outputs[i].Connected then Continue;
+    if FXR.Outputs[i].DesiredEnabled then Continue;
+    if PtInRect(TraySlotRect(Slot), Point(CX, CY)) then
+      Exit(i);
+    Inc(Slot);
+  end;
 end;
 
 procedure TLayoutCanvas.ClampToNeighbours(Idx: integer; var NX, NY: integer);
@@ -477,22 +581,27 @@ var
   x, y: integer;
   Dot: TBGRAPixel;
 begin
-  FBmp.Fill(ToBGRA(clWindowBg));
-
-  { A faint dot grid gives the drag something to read against without the
-    busy look of full gridlines. }
-  Dot := ToBGRA(clGridDot);
-  y := 0;
-  while y < FBmp.Height do
+  { The dot grid never changes unless the control does, so build it once and
+    blit it. Regenerating it pixel by pixel on every repaint was most of the
+    cost of a window resize. }
+  if (FBack.Width <> FBmp.Width) or (FBack.Height <> FBmp.Height) then
   begin
-    x := 0;
-    while x < FBmp.Width do
+    FBack.SetSize(FBmp.Width, FBmp.Height);
+    FBack.Fill(ToBGRA(clWindowBg));
+    Dot := ToBGRA(clGridDot);
+    y := 0;
+    while y < FBack.Height do
     begin
-      FBmp.SetPixel(x, y, Dot);
-      Inc(x, 22);
+      x := 0;
+      while x < FBack.Width do
+      begin
+        FBack.SetPixel(x, y, Dot);
+        Inc(x, 22);
+      end;
+      Inc(y, 22);
     end;
-    Inc(y, 22);
   end;
+  FBmp.PutImage(0, 0, FBack, dmSet);
 end;
 
 procedure TLayoutCanvas.DrawTile(Idx: integer);
@@ -619,6 +728,75 @@ begin
   end;
 end;
 
+procedure TLayoutCanvas.DrawTray;
+var
+  R: TRect;
+  i, Slot: integer;
+  Cap: string;
+begin
+  R := TrayBounds;
+
+  FBmp.FillRect(R.Left, R.Top, R.Right, R.Bottom, ToBGRA(clSurface), dmSet);
+  FBmp.SetHorizLine(R.Left, R.Bottom - 1, R.Right - 1, ToBGRA(clHairline));
+
+  FBmp.FontName := UIFont;
+  FBmp.FontQuality := fqFineAntialiasing;
+  FBmp.FontStyle := [fsBold];
+  FBmp.FontHeight := 11;
+
+  if DisabledCount = 0 then
+    Cap := 'INACTIVE  —  drop a screen here to switch it off'
+  else
+    Cap := 'INACTIVE  —  drag onto the canvas to switch on';
+  FBmp.TextOut(TrayPad, 5, Cap, ToBGRA(clTextFaint));
+
+  Slot := 0;
+  for i := 0 to High(FXR.Outputs) do
+  begin
+    if not FXR.Outputs[i].Connected then Continue;
+    if FXR.Outputs[i].DesiredEnabled then Continue;
+    DrawTrayTile(i, Slot);
+    Inc(Slot);
+  end;
+
+  { Make the drop target obvious while a screen is in flight. }
+  if FDragging and (DisabledCount = 0) then
+    FBmp.RoundRectAntialias(TrayPad, TrayLabelH + TrayPad,
+      TrayPad + TrayTileW, TrayLabelH + TrayPad + TrayTileH,
+      8, 8, ToBGRA(clHairline, 170), 1.5);
+end;
+
+procedure TLayoutCanvas.DrawTrayTile(Idx, Slot: integer);
+var
+  R: TRect;
+  Sel: boolean;
+  NameStr, SubStr: string;
+  LW, LH: integer;
+begin
+  R := TraySlotRect(Slot);
+  if R.Right > Width - TrayPad then Exit;   // ran out of room
+
+  Sel := (Idx = FSelected);
+  LogicalSize(Idx, LW, LH);
+
+  FillRounded(FBmp, R, 8, ToBGRA(clTileDisabledFrom), ToBGRA(clTileDisabledTo));
+  if Sel then
+    StrokeRounded(FBmp, R, 8, ToBGRA(clAccentHi), 1.8)
+  else
+    StrokeRounded(FBmp, R, 8, ToBGRA(clHairlineSoft), 1);
+
+  FBmp.FontName := UIFont;
+  FBmp.FontStyle := [fsBold];
+  FBmp.FontHeight := 13;
+  NameStr := FXR.Outputs[Idx].Name;
+  FBmp.TextOut(R.Left + 9, R.Top + 7, NameStr, ToBGRA(clTextDim));
+
+  FBmp.FontStyle := [];
+  FBmp.FontHeight := 11;
+  SubStr := Format('%d × %d  ·  off', [LW, LH]);
+  FBmp.TextOut(R.Left + 9, R.Top + 25, SubStr, ToBGRA(clTextFaint));
+end;
+
 procedure TLayoutCanvas.DrawGuides;
 var
   y, x: integer;
@@ -671,18 +849,21 @@ begin
     DrawEmptyState
   else
   begin
-    { Disabled first, then enabled, then the selected one on top. }
+    { Active screens only -- the disabled ones live in the tray. Selected
+      one last so it sits on top. }
     for i := 0 to High(FXR.Outputs) do
-      if FXR.Outputs[i].Connected and not FXR.Outputs[i].DesiredEnabled and (i <> FSelected) then
-        DrawTile(i);
-    for i := 0 to High(FXR.Outputs) do
-      if FXR.Outputs[i].Connected and FXR.Outputs[i].DesiredEnabled and (i <> FSelected) then
+      if FXR.Outputs[i].Connected and FXR.Outputs[i].DesiredEnabled and
+         (i <> FSelected) then
         DrawTile(i);
     if (FSelected >= 0) and (FSelected <= High(FXR.Outputs)) and
-       FXR.Outputs[FSelected].Connected then
+       FXR.Outputs[FSelected].Connected and
+       FXR.Outputs[FSelected].DesiredEnabled then
       DrawTile(FSelected);
 
     DrawGuides;
+
+    if TrayVisible then
+      DrawTray;
   end;
 
   FBmp.Draw(Canvas, 0, 0, True);
@@ -698,11 +879,42 @@ end;
 procedure TLayoutCanvas.MouseDown(Button: TMouseButton; Shift: TShiftState;
   X, Y: integer);
 var
-  Idx: integer;
+  Idx, TrayIdx, LW, LH, NX, NY: integer;
   D: TPoint;
 begin
   inherited MouseDown(Button, Shift, X, Y);
   if FXR = nil then Exit;
+
+  { Picking a screen out of the inactive tray switches it on straight away
+    and hands it to the normal drag, so it follows the cursor onto the
+    layout. Dropping it back in the tray undoes that. }
+  TrayIdx := TrayIndexAt(X, Y);
+  if (TrayIdx >= 0) and (Button = mbLeft) then
+  begin
+    SelectOutput(TrayIdx);
+    FXR.Outputs[TrayIdx].DesiredEnabled := True;
+    LogicalSize(TrayIdx, LW, LH);
+    D := CanvasToDesktop(X, Y);
+    NX := D.X - LW div 2;
+    NY := D.Y - LH div 2;
+    ClampToNeighbours(TrayIdx, NX, NY);
+    FXR.Outputs[TrayIdx].DesiredX := NX;
+    FXR.Outputs[TrayIdx].DesiredY := NY;
+
+    FDragging := True;
+    FDragFromTray := True;
+    FDragIndex := TrayIdx;
+    FDragGrabX := LW div 2;
+    FDragGrabY := LH div 2;
+    FSnapXOn := False;
+    FSnapYOn := False;
+    Screen.Cursor := crSizeAll;
+    Invalidate;
+    if Assigned(FOnChanged) then FOnChanged(Self);
+    Exit;
+  end;
+
+  if PtInRect(TrayBounds, Point(X, Y)) and TrayVisible then Exit;
 
   Idx := TileAt(X, Y);
   SelectOutput(Idx);
@@ -710,6 +922,7 @@ begin
   if (Idx >= 0) and (Button = mbLeft) and FXR.Outputs[Idx].DesiredEnabled then
   begin
     FDragging := True;
+    FDragFromTray := False;
     FDragIndex := Idx;
     FSnapXOn := False;
     FSnapYOn := False;
@@ -763,6 +976,7 @@ begin
   begin
     OldHot := FHot;
     FHot := TileAt(X, Y);
+    if FHot < 0 then FHot := TrayIndexAt(X, Y);
     if FHot <> OldHot then
     begin
       Cursor := IfThen(FHot >= 0, crHandPoint, crDefault);
@@ -777,7 +991,20 @@ begin
   inherited MouseUp(Button, Shift, X, Y);
   if FDragging then
   begin
+    { Dropped back into the tray: switch the screen off. Refuse if it is the
+      last one left -- a desktop with no active output is not recoverable
+      from inside this window. }
+    if (FXR <> nil) and (FDragIndex >= 0) and
+       PtInRect(TrayBounds, Point(X, Y)) then
+    begin
+      if EnabledCount > 1 then
+        FXR.Outputs[FDragIndex].DesiredEnabled := False
+      else if FDragFromTray then
+        FXR.Outputs[FDragIndex].DesiredEnabled := False;
+    end;
+
     FDragging := False;
+    FDragFromTray := False;
     FDragIndex := -1;
     FGuideV := -1;
     FGuideH := -1;
@@ -789,6 +1016,7 @@ begin
     end;
     Invalidate;
     if Assigned(FOnChanged) then FOnChanged(Self);
+    if Assigned(FOnCommit) then FOnCommit(Self);
   end;
 end;
 
