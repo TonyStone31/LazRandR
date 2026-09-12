@@ -37,6 +37,7 @@ type
     FProviders: TProviderArray;
     FScreenW, FScreenH: integer;
     FLastError: string;
+    FGrowthBlocked: boolean;
     procedure ParseOutputHeader(const Line: string; var Outp: TOutputInfo);
     procedure ParseModeLine(const Line: string; var Outp: TOutputInfo);
   public
@@ -92,6 +93,12 @@ type
     property ScreenW: integer read FScreenW;
     property ScreenH: integer read FScreenH;
     property LastError: string read FLastError;
+    { Set once an apply has been refused with BadMatch on RRSetScreenSize.
+      Some drivers -- NVIDIA here -- fix the maximum X screen size when X
+      starts, so a layout needing a bigger desktop can never be applied in
+      this session. Worth saying so before the user arranges one, not only
+      after it fails. }
+    property GrowthBlocked: boolean read FGrowthBlocked;
   end;
 
 { Split a string on whitespace runs. }
@@ -712,6 +719,9 @@ var
 begin
   Cmd := BuildApplyCommand;
   Result := Run(Cmd, Output);
+  if (not Result) and
+     ((Pos('RRSetScreenSize', Output) > 0) or (Pos('BadMatch', Output) > 0)) then
+    FGrowthBlocked := True;
 end;
 
 function TXRandR.LinkProvider(const SinkName, SourceName: string;

@@ -474,7 +474,14 @@ var
 begin
   FXR.DesiredScreenSize(W, H);
 
-  if FXR.HasPendingChanges or FTouch.HasPendingChanges then
+  if FXR.GrowthBlocked and ((W > FXR.ScreenW) or (H > FXR.ScreenH)) then
+  begin
+    { Tell them now rather than after they have spent a minute arranging it. }
+    SetStatus(Format('Layout needs %d × %d — X screen is capped at %d × %d ' +
+      'and cannot grow (see Apply for the fix)',
+      [W, H, FXR.ScreenW, FXR.ScreenH]), clDanger);
+  end
+  else if FXR.HasPendingChanges or FTouch.HasPendingChanges then
   begin
     SetStatus(Format('Unapplied changes  ·  virtual desktop %d × %d', [W, H]), clWarn);
   end
