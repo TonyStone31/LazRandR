@@ -44,6 +44,17 @@ behind, so it is gone on next login. LazRandR persists both halves itself.
   `--setprovideroutputsource` link needed when a panel hangs off a different
   GPU than the desktop renders on.
 - **Identify** — numbered card on each screen, matching the canvas tiles.
+- **Confirm or revert** — geometry changes are provisional. The previous
+  layout *and* every input matrix are captured first, and a 15 second
+  countdown puts them back unless you confirm, so a bad mode or a lost
+  primary output cannot strand you with no way to undo it.
+- **Inactive tray** — disabled outputs are parked in a permanent strip along
+  the top rather than left at stale desktop coordinates where they hide
+  underneath an active screen. Drag out to switch on, drop in to switch off.
+- **Per-tile controls** — rotate, set primary and switch off directly on the
+  selected screen.
+- **Interface scale** — 100/200/300/400%, the same Cinnamon setting its own
+  display panel drives. Global on X11, not per-monitor.
 
 ## Building
 
@@ -52,11 +63,15 @@ Requires the fpcupdeluxe Lazarus/FPC trunk install at
 `BGRAControls` registered.
 
 ```bash
-./build.sh              # build
+./build.sh              # optimised build (default)
+./build.sh --debug      # range/overflow checks, debug info, heaptrc
 ./build.sh --clean      # wipe lib/ and the binary first
 ./build.sh --verbose    # full compiler log
 ./run.sh                # build if needed, then run
 ```
+
+Release is `-O3`, smart-linked and stripped (~6 MB); Debug keeps the checks
+and symbols and builds to a separate output directory.
 
 The widgetset is pinned to **gtk3** — the only one compiled in that Lazarus
 install, and what the forms are laid out against.
