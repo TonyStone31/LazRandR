@@ -35,17 +35,22 @@ type
     FOffX, FOffY: integer;             // canvas px offset of desktop origin
     FOriginX, FOriginY: integer;       // desktop coords at canvas origin
     FGuideV, FGuideH: integer;         // active snap guides, canvas px, -1 = none
+    { Sticky snap state, per axis. }
+    FSnapXOn, FSnapYOn: boolean;
+    FSnapXVal, FSnapYVal: integer;     // desktop coord the tile is stuck to
+    FSnapXGuide, FSnapYGuide: integer; // desktop coord to draw the guide at
     FOnChanged: TNotifyEvent;
     FOnSelect: TTileEvent;
     FShowTouchBadges: boolean;
 
-    procedure ComputeScale;
+    procedure ComputeScale(Force: boolean = False);
     function DesktopToCanvas(DX, DY: integer): TPoint;
     function CanvasToDesktop(CX, CY: integer): TPoint;
     procedure LogicalSize(Idx: integer; out W, H: integer);
     function TileRect(Idx: integer): TRect;
     function TileAt(CX, CY: integer): integer;
     procedure ApplySnapping(Idx: integer; var NX, NY: integer);
+    procedure ClampToNeighbours(Idx: integer; var NX, NY: integer);
     function OutputHasTouch(Idx: integer): boolean;
 
     procedure DrawBackdrop;
@@ -59,12 +64,14 @@ type
     procedure MouseMove(Shift: TShiftState; X, Y: integer); override;
     procedure MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: integer); override;
     procedure MouseLeave; override;
+    procedure DblClick; override;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
 
     procedure Attach(AXR: TXRandR; ATouch: TTouchManager);
     procedure Rebuild;
+    procedure FitToContent;
     procedure SelectOutput(Idx: integer);
 
     property SelectedIndex: integer read FSelected;
@@ -78,7 +85,26 @@ implementation
 const
   TilePad = 28;          // canvas px breathing room around the layout
   TileRadius = 11;
-  SnapPixels = 90;       // snap threshold, in DESKTOP px
+
+  { Snap thresholds are expressed in CANVAS pixels and converted to desktop
+    pixels through the current zoom. A fixed desktop-pixel threshold felt
+    strong on a small layout and useless once the canvas rescaled to fit a
+    third screen, which is exactly when it mattered most.
+
+    Acquire < Break gives hysteresis: once an edge is stuck it takes a
+    deliberate pull to let go, so tiles stop jittering in and out of
+    alignment while you are still dragging. }
+  SnapAcquireCanvasPx = 26;
+  SnapBreakCanvasPx = 46;
+
+  { How far a screen may be dragged beyond the others before it is stopped.
+    Without this the layout's bounding box grows without limit, the canvas
+    scales down to fit it, and every tile shrinks to nothing with no way
+    back. A display arrangement has no meaning with a mile-wide gap anyway. }
+  MaxGapDesktopPx = 600;
+
+  { Never let a tile get too small to grab, whatever the layout does. }
+  MinTileCanvasPx = 26;
 
 constructor TLayoutCanvas.Create(AOwner: TComponent);
 begin
@@ -111,7 +137,13 @@ end;
 
 procedure TLayoutCanvas.Rebuild;
 begin
-  ComputeScale;
+  ComputeScale(True);
+  Invalidate;
+end;
+
+procedure TLayoutCanvas.FitToContent;
+begin
+  ComputeScale(True);
   Invalidate;
 end;
 
@@ -139,20 +171,25 @@ begin
   if H <= 0 then H := 1080;
 end;
 
-procedure TLayoutCanvas.ComputeScale;
+procedure TLayoutCanvas.ComputeScale(Force: boolean);
 var
   i, LW, LH: integer;
   MinX, MinY, MaxX, MaxY: integer;
   Any: boolean;
   SX, SY: double;
+  Ideal: double;
   BoxW, BoxH, AvailW, AvailH: integer;
+  Overflows: boolean;
 begin
-  FScale := 1;
   FOffX := 0;
   FOffY := 0;
   FOriginX := 0;
   FOriginY := 0;
-  if FXR = nil then Exit;
+  if FXR = nil then
+  begin
+    FScale := 1;
+    Exit;
+  end;
 
   MinX := MaxInt; MinY := MaxInt;
   MaxX := -MaxInt; MaxY := -MaxInt;
@@ -169,7 +206,11 @@ begin
     MaxY := Max(MaxY, FXR.Outputs[i].DesiredY + LH);
   end;
 
-  if not Any then Exit;
+  if not Any then
+  begin
+    if FScale <= 0 then FScale := 1;
+    Exit;
+  end;
 
   BoxW := MaxX - MinX;
   BoxH := MaxY - MinY;
@@ -180,7 +221,31 @@ begin
 
   SX := AvailW / BoxW;
   SY := AvailH / BoxH;
-  FScale := Min(SX, SY);
+  Ideal := Min(SX, SY);
+
+  { Refitting on every drop made the untouched screens visibly grow and
+    shrink as you moved another one around -- the layout was fine, the zoom
+    was not. So only rescale when it is actually needed: when the content no
+    longer fits, or when it has been left with a lot of slack. }
+  Overflows := (BoxW * FScale > AvailW) or (BoxH * FScale > AvailH);
+
+  if Force or (FScale <= 0) then
+    FScale := Ideal
+  else if Overflows then
+    FScale := Ideal
+  else if Ideal > FScale * 1.6 then
+    FScale := Ideal;
+
+  { Hard floor: whatever the layout is doing, keep the smallest screen big
+    enough to see and grab. Overflowing the viewport is far better than
+    tiles that have shrunk out of existence. }
+  for i := 0 to High(FXR.Outputs) do
+  begin
+    if not FXR.Outputs[i].Connected then Continue;
+    LogicalSize(i, LW, LH);
+    if Min(LW, LH) > 0 then
+      FScale := Max(FScale, MinTileCanvasPx / Min(LW, LH));
+  end;
 
   FOriginX := MinX;
   FOriginY := MinY;
@@ -244,45 +309,15 @@ begin
       Exit(True);
 end;
 
-procedure TLayoutCanvas.ApplySnapping(Idx: integer; var NX, NY: integer);
+procedure TLayoutCanvas.ClampToNeighbours(Idx: integer; var NX, NY: integer);
 var
   i, LW, LH, OW, OH: integer;
-  BestDX, BestDY, D: integer;
-  GX, GY: integer;
-
-  procedure TryX(Candidate, GuideAt: integer);
-  begin
-    D := Abs(Candidate - NX);
-    if D < BestDX then
-    begin
-      BestDX := D;
-      GX := GuideAt;
-      NX := Candidate;
-    end;
-  end;
-
-  procedure TryY(Candidate, GuideAt: integer);
-  begin
-    D := Abs(Candidate - NY);
-    if D < BestDY then
-    begin
-      BestDY := D;
-      GY := GuideAt;
-      NY := Candidate;
-    end;
-  end;
-
-var
-  CandX, CandY: integer;
+  MinX, MinY, MaxX, MaxY: integer;
+  Any: boolean;
 begin
-  FGuideV := -1;
-  FGuideH := -1;
-  LogicalSize(Idx, LW, LH);
-
-  BestDX := SnapPixels + 1;
-  BestDY := SnapPixels + 1;
-  GX := -1;
-  GY := -1;
+  MinX := MaxInt; MinY := MaxInt;
+  MaxX := -MaxInt; MaxY := -MaxInt;
+  Any := False;
 
   for i := 0 to High(FXR.Outputs) do
   begin
@@ -290,36 +325,151 @@ begin
     if not FXR.Outputs[i].Connected then Continue;
     if not FXR.Outputs[i].DesiredEnabled then Continue;
     LogicalSize(i, OW, OH);
-
-    { --- horizontal: butt up against either side, or align edges --- }
-    CandX := FXR.Outputs[i].DesiredX + OW;          // my left to their right
-    if Abs(CandX - NX) <= SnapPixels then TryX(CandX, CandX);
-    CandX := FXR.Outputs[i].DesiredX - LW;          // my right to their left
-    if Abs(CandX - NX) <= SnapPixels then TryX(CandX, FXR.Outputs[i].DesiredX);
-    CandX := FXR.Outputs[i].DesiredX;               // left edges flush
-    if Abs(CandX - NX) <= SnapPixels then TryX(CandX, CandX);
-    CandX := FXR.Outputs[i].DesiredX + OW - LW;     // right edges flush
-    if Abs(CandX - NX) <= SnapPixels then TryX(CandX, CandX + LW);
-
-    { --- vertical: same four relationships --- }
-    CandY := FXR.Outputs[i].DesiredY + OH;
-    if Abs(CandY - NY) <= SnapPixels then TryY(CandY, CandY);
-    CandY := FXR.Outputs[i].DesiredY - LH;
-    if Abs(CandY - NY) <= SnapPixels then TryY(CandY, FXR.Outputs[i].DesiredY);
-    CandY := FXR.Outputs[i].DesiredY;
-    if Abs(CandY - NY) <= SnapPixels then TryY(CandY, CandY);
-    CandY := FXR.Outputs[i].DesiredY + OH - LH;
-    if Abs(CandY - NY) <= SnapPixels then TryY(CandY, CandY + LH);
-
-    { Centre alignment reads as "lined up" to the eye, so offer it too. }
-    CandY := FXR.Outputs[i].DesiredY + (OH - LH) div 2;
-    if Abs(CandY - NY) <= SnapPixels then TryY(CandY, CandY + LH div 2);
-    CandX := FXR.Outputs[i].DesiredX + (OW - LW) div 2;
-    if Abs(CandX - NX) <= SnapPixels then TryX(CandX, CandX + LW div 2);
+    Any := True;
+    MinX := Min(MinX, FXR.Outputs[i].DesiredX);
+    MinY := Min(MinY, FXR.Outputs[i].DesiredY);
+    MaxX := Max(MaxX, FXR.Outputs[i].DesiredX + OW);
+    MaxY := Max(MaxY, FXR.Outputs[i].DesiredY + OH);
   end;
 
-  if GX >= 0 then FGuideV := DesktopToCanvas(GX, 0).X;
-  if GY >= 0 then FGuideH := DesktopToCanvas(0, GY).Y;
+  if not Any then Exit;   // nothing to be relative to
+  LogicalSize(Idx, LW, LH);
+
+  { Far enough out to sit on any side with a visible gap, no further. }
+  NX := Max(MinX - LW - MaxGapDesktopPx, Min(NX, MaxX + MaxGapDesktopPx));
+  NY := Max(MinY - LH - MaxGapDesktopPx, Min(NY, MaxY + MaxGapDesktopPx));
+end;
+
+procedure TLayoutCanvas.ApplySnapping(Idx: integer; var NX, NY: integer);
+var
+  i, LW, LH, OW, OH: integer;
+  AcquireD, BreakD: integer;
+  BestD, D: integer;
+  CandV, CandG: integer;
+  FoundX, FoundY: boolean;
+  BestVX, BestGX, BestVY, BestGY: integer;
+
+  { Offer one candidate position for an axis. Value is where the tile's
+    leading edge would land; Guide is where to draw the alignment line. }
+  procedure OfferX(Value, Guide: integer);
+  begin
+    D := Abs(Value - NX);
+    if (D <= AcquireD) and (D < BestD) then
+    begin
+      BestD := D;
+      BestVX := Value;
+      BestGX := Guide;
+      FoundX := True;
+    end;
+  end;
+
+  procedure OfferY(Value, Guide: integer);
+  begin
+    D := Abs(Value - NY);
+    if (D <= AcquireD) and (D < BestD) then
+    begin
+      BestD := D;
+      BestVY := Value;
+      BestGY := Guide;
+      FoundY := True;
+    end;
+  end;
+
+begin
+  FGuideV := -1;
+  FGuideH := -1;
+  if FScale <= 0 then Exit;
+
+  LogicalSize(Idx, LW, LH);
+  AcquireD := Round(SnapAcquireCanvasPx / FScale);
+  BreakD := Round(SnapBreakCanvasPx / FScale);
+
+  { ---------- X axis ---------- }
+  if FSnapXOn and (Abs(NX - FSnapXVal) <= BreakD) then
+  begin
+    { Still within the break distance: stay stuck. }
+    NX := FSnapXVal;
+    FGuideV := DesktopToCanvas(FSnapXGuide, 0).X;
+  end
+  else
+  begin
+    FSnapXOn := False;
+    FoundX := False;
+    BestD := MaxInt;
+    BestVX := NX;
+    BestGX := 0;
+
+    for i := 0 to High(FXR.Outputs) do
+    begin
+      if i = Idx then Continue;
+      if not FXR.Outputs[i].Connected then Continue;
+      if not FXR.Outputs[i].DesiredEnabled then Continue;
+      LogicalSize(i, OW, OH);
+
+      CandV := FXR.Outputs[i].DesiredX + OW;              // my left  -> their right
+      CandG := CandV;                       OfferX(CandV, CandG);
+      CandV := FXR.Outputs[i].DesiredX - LW;              // my right -> their left
+      CandG := FXR.Outputs[i].DesiredX;     OfferX(CandV, CandG);
+      CandV := FXR.Outputs[i].DesiredX;                   // left edges flush
+      CandG := CandV;                       OfferX(CandV, CandG);
+      CandV := FXR.Outputs[i].DesiredX + OW - LW;         // right edges flush
+      CandG := CandV + LW;                  OfferX(CandV, CandG);
+      CandV := FXR.Outputs[i].DesiredX + (OW - LW) div 2; // centres aligned
+      CandG := CandV + LW div 2;            OfferX(CandV, CandG);
+    end;
+
+    if FoundX then
+    begin
+      NX := BestVX;
+      FSnapXOn := True;
+      FSnapXVal := BestVX;
+      FSnapXGuide := BestGX;
+      FGuideV := DesktopToCanvas(BestGX, 0).X;
+    end;
+  end;
+
+  { ---------- Y axis ---------- }
+  if FSnapYOn and (Abs(NY - FSnapYVal) <= BreakD) then
+  begin
+    NY := FSnapYVal;
+    FGuideH := DesktopToCanvas(0, FSnapYGuide).Y;
+  end
+  else
+  begin
+    FSnapYOn := False;
+    FoundY := False;
+    BestD := MaxInt;
+    BestVY := NY;
+    BestGY := 0;
+
+    for i := 0 to High(FXR.Outputs) do
+    begin
+      if i = Idx then Continue;
+      if not FXR.Outputs[i].Connected then Continue;
+      if not FXR.Outputs[i].DesiredEnabled then Continue;
+      LogicalSize(i, OW, OH);
+
+      CandV := FXR.Outputs[i].DesiredY + OH;              // my top    -> their bottom
+      CandG := CandV;                       OfferY(CandV, CandG);
+      CandV := FXR.Outputs[i].DesiredY - LH;              // my bottom -> their top
+      CandG := FXR.Outputs[i].DesiredY;     OfferY(CandV, CandG);
+      CandV := FXR.Outputs[i].DesiredY;                   // top edges flush
+      CandG := CandV;                       OfferY(CandV, CandG);
+      CandV := FXR.Outputs[i].DesiredY + OH - LH;         // bottom edges flush
+      CandG := CandV + LH;                  OfferY(CandV, CandG);
+      CandV := FXR.Outputs[i].DesiredY + (OH - LH) div 2; // centres aligned
+      CandG := CandV + LH div 2;            OfferY(CandV, CandG);
+    end;
+
+    if FoundY then
+    begin
+      NY := BestVY;
+      FSnapYOn := True;
+      FSnapYVal := BestVY;
+      FSnapYGuide := BestGY;
+      FGuideH := DesktopToCanvas(0, BestGY).Y;
+    end;
+  end;
 end;
 
 procedure TLayoutCanvas.DrawBackdrop;
@@ -541,7 +691,7 @@ end;
 procedure TLayoutCanvas.Resize;
 begin
   inherited Resize;
-  ComputeScale;
+  ComputeScale(True);
   Invalidate;
 end;
 
@@ -561,6 +711,8 @@ begin
   begin
     FDragging := True;
     FDragIndex := Idx;
+    FSnapXOn := False;
+    FSnapYOn := False;
     D := CanvasToDesktop(X, Y);
     FDragGrabX := D.X - FXR.Outputs[Idx].DesiredX;
     FDragGrabY := D.Y - FXR.Outputs[Idx].DesiredY;
@@ -582,11 +734,16 @@ begin
     NX := D.X - FDragGrabX;
     NY := D.Y - FDragGrabY;
 
+    ClampToNeighbours(FDragIndex, NX, NY);
+
     { Alt bypasses snapping for the rare case you want a deliberate gap. }
     if not (ssAlt in Shift) then
       ApplySnapping(FDragIndex, NX, NY)
     else
     begin
+      { Alt held: free placement, and forget any stuck edge. }
+      FSnapXOn := False;
+      FSnapYOn := False;
       FGuideV := -1;
       FGuideH := -1;
     end;
@@ -628,11 +785,20 @@ begin
     if FXR <> nil then
     begin
       FXR.NormaliseDesiredOrigin;
-      ComputeScale;
+      ComputeScale(False);
     end;
     Invalidate;
     if Assigned(FOnChanged) then FOnChanged(Self);
   end;
+end;
+
+procedure TLayoutCanvas.DblClick;
+begin
+  inherited DblClick;
+  { Double-clicking the background refits the view -- the escape hatch when
+    a layout has been dragged somewhere awkward. }
+  if FSelected < 0 then
+    FitToContent;
 end;
 
 procedure TLayoutCanvas.MouseLeave;

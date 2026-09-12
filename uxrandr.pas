@@ -79,6 +79,11 @@ type
 
     { Find the non-NVIDIA sink provider, i.e. the one a USB-C/iGPU panel
       would be hanging off. Returns '' when there is none. }
+    { A cheap signature of "what hardware is attached right now". Compared on
+      a timer so the app notices a panel being plugged in or unplugged
+      without the user having to think about it. One subprocess per poll. }
+    function TopologyFingerprint: string;
+
     function FindSinkProvider: string;
     function FindSourceProvider: string;
 
@@ -472,6 +477,21 @@ begin
   finally
     Lines.Free;
   end;
+end;
+
+function TXRandR.TopologyFingerprint: string;
+var
+  Output: string;
+begin
+  Result := '';
+  { Name + connected alone is not enough: switching an output off leaves it
+    "connected" (the cable is still in), so the signature would never move.
+    Keep the screen size, primary flag, geometry and rotation too, which also
+    catches a layout changed by some other tool while we are open. }
+  if Run('xrandr --query | sed -n ''/^Screen /p; / connected/p'' ' +
+         '| sed ''s/(.*//''; echo ---; xinput list --id-only 2>/dev/null',
+         Output) then
+    Result := Output;
 end;
 
 function TXRandR.FindSinkProvider: string;

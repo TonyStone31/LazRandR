@@ -70,6 +70,7 @@ type
     Name: string;
     Kind: TDeviceKind;
     IsSlave: boolean;
+    Enabled: boolean;         // xinput "Device Enabled"; disabled devices float
     Matrix: TCTM;
     HasMatrix: boolean;
     MappedOutput: string;     // output name inferred from Matrix, '' if none/whole desktop

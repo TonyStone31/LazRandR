@@ -253,9 +253,17 @@ object frmMain: TfrmMain
       Left = 16
       Height = 32
       Top = 456
-      Width = 308
-      Caption = 'Map to selected display'
+      Width = 186
+      Caption = 'Map to selected'
       OnClick = btnMapSelectedClick
+    end
+    object btnToggleDevice: TBCButton
+      Left = 210
+      Height = 32
+      Top = 456
+      Width = 114
+      Caption = 'Disable'
+      OnClick = btnToggleDeviceClick
     end
     object lblSecSave: TBCLabel
       AutoSize = False
@@ -317,6 +325,12 @@ object frmMain: TfrmMain
     BevelOuter = bvNone
     Caption = ''
     TabOrder = 3
+  end
+  object timHotplug: TTimer
+    Interval = 2500
+    OnTimer = timHotplugTimer
+    Left = 680
+    Top = 400
   end
   object timIdentify: TTimer
     Enabled = False

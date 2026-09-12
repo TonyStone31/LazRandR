@@ -30,6 +30,7 @@ type
     btnReload: TBCButton;
     btnRevert: TBCButton;
     btnSaveProfile: TBCButton;
+    btnToggleDevice: TBCButton;
     btnApply: TBCButton;
     cboProfile: TComboBox;
     cboRate: TComboBox;
@@ -58,6 +59,7 @@ type
     pnlFooter: TBCPanel;
     pnlHeader: TBCPanel;
     pnlSide: TBCPanel;
+    timHotplug: TTimer;
     timIdentify: TTimer;
     procedure btnApplyClick(Sender: TObject);
     procedure btnIdentifyClick(Sender: TObject);
@@ -67,6 +69,7 @@ type
     procedure btnReloadClick(Sender: TObject);
     procedure btnRevertClick(Sender: TObject);
     procedure btnSaveProfileClick(Sender: TObject);
+    procedure btnToggleDeviceClick(Sender: TObject);
     procedure cboRateChange(Sender: TObject);
     procedure cboResolutionChange(Sender: TObject);
     procedure cboRotationChange(Sender: TObject);
@@ -77,6 +80,7 @@ type
     procedure chkPrimaryChange(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
+    procedure timHotplugTimer(Sender: TObject);
     procedure timIdentifyTimer(Sender: TObject);
   private
     FXR: TXRandR;
@@ -84,6 +88,7 @@ type
     FStore: TProfileStore;
     FCanvas: TLayoutCanvas;
     FLoading: boolean;          // guards combo OnChange while repopulating
+    FTopology: string;          // last seen hardware signature, for hotplug
     FIdentForms: array of TfrmIdentify;
 
     procedure ApplyTheming;
@@ -91,6 +96,7 @@ type
     procedure RefreshProfileList;
     procedure PopulateSide;
     procedure PopulateTouchPanel;
+    procedure UpdateToggleCaption;
     procedure UpdateStatus;
     procedure SetStatus(const S: string; Col: TColor);
     function SelectedOutput: integer;
@@ -140,6 +146,9 @@ begin
 
   chkAutostart.Checked := FStore.AutostartInstalled;
   RefreshProfileList;
+
+  FTopology := FXR.TopologyFingerprint;
+  timHotplug.Enabled := True;
 end;
 
 procedure TfrmMain.FormDestroy(Sender: TObject);
@@ -184,6 +193,7 @@ begin
   SkinButton(btnReload, bkNeutral);
   SkinButton(btnPreview, bkNeutral);
   SkinButton(btnMapSelected, bkNeutral, 13);
+  SkinButton(btnToggleDevice, bkNeutral, 13);
   SkinButton(btnSaveProfile, bkNeutral, 13);
   SkinButton(btnLoadProfile, bkNeutral, 13);
 
@@ -334,8 +344,12 @@ begin
     cboTouchDevice.Items.Clear;
 
     for i := 0 to High(FTouch.Devices) do
-      cboTouchDevice.Items.Add(Format('%s  [%s]',
-        [FTouch.Devices[i].Name, DeviceKindNames[FTouch.Devices[i].Kind]]));
+      if FTouch.Devices[i].Enabled then
+        cboTouchDevice.Items.Add(Format('%s  [%s]',
+          [FTouch.Devices[i].Name, DeviceKindNames[FTouch.Devices[i].Kind]]))
+      else
+        cboTouchDevice.Items.Add(Format('%s  [%s — OFF]',
+          [FTouch.Devices[i].Name, DeviceKindNames[FTouch.Devices[i].Kind]]));
 
     if Length(FTouch.Devices) = 0 then
     begin
@@ -344,6 +358,7 @@ begin
       cboTouchDevice.Enabled := False;
       cboTouchOutput.Enabled := False;
       btnMapSelected.Enabled := False;
+      btnToggleDevice.Enabled := False;
     end
     else
     begin
@@ -356,10 +371,12 @@ begin
       cboTouchDevice.Enabled := True;
       cboTouchOutput.Enabled := True;
       btnMapSelected.Enabled := True;
+      btnToggleDevice.Enabled := True;
       if (SelDev < 0) or (SelDev >= cboTouchDevice.Items.Count) then
         SelDev := 0;
       cboTouchDevice.ItemIndex := SelDev;
     end;
+    UpdateToggleCaption;
 
     { Target list: whole desktop, then every connected output. }
     cboTouchOutput.Items.Clear;
@@ -379,6 +396,65 @@ begin
   finally
     FLoading := False;
   end;
+end;
+
+procedure TfrmMain.UpdateToggleCaption;
+var
+  D: integer;
+begin
+  D := cboTouchDevice.ItemIndex;
+  if (D < 0) or (D > High(FTouch.Devices)) then
+  begin
+    btnToggleDevice.Caption := 'Disable';
+    Exit;
+  end;
+  if FTouch.Devices[D].Enabled then
+    btnToggleDevice.Caption := 'Disable'
+  else
+    btnToggleDevice.Caption := 'Enable';
+end;
+
+procedure TfrmMain.btnToggleDeviceClick(Sender: TObject);
+var
+  D: integer;
+  Output: string;
+begin
+  D := cboTouchDevice.ItemIndex;
+  if (D < 0) or (D > High(FTouch.Devices)) then Exit;
+
+  if not FTouch.SetDeviceEnabled(D, not FTouch.Devices[D].Enabled, Output) then
+  begin
+    MessageDlg('xinput failed', Output, mtError, [mbOK], 0);
+    Exit;
+  end;
+
+  if FTouch.Devices[D].Enabled then
+    SetStatus('Enabled ' + FTouch.Devices[D].Name, clOkay)
+  else
+    SetStatus('Disabled ' + FTouch.Devices[D].Name, clWarn);
+
+  FTouch.Refresh;
+  PopulateTouchPanel;
+  FCanvas.Invalidate;
+end;
+
+procedure TfrmMain.timHotplugTimer(Sender: TObject);
+var
+  Now_: string;
+begin
+  Now_ := FXR.TopologyFingerprint;
+  if (Now_ = '') or (Now_ = FTopology) then Exit;
+  FTopology := Now_;
+
+  { Never throw away edits the user has not applied yet -- just tell them. }
+  if FXR.HasPendingChanges or FTouch.HasPendingChanges then
+  begin
+    SetStatus('Hardware changed — press Reload to pick it up', clWarn);
+    Exit;
+  end;
+
+  ReloadAll;
+  SetStatus('Hardware change detected — reloaded', clOkay);
 end;
 
 procedure TfrmMain.UpdateStatus;
@@ -529,6 +605,7 @@ begin
   finally
     FLoading := False;
   end;
+  UpdateToggleCaption;
 end;
 
 procedure TfrmMain.cboTouchOutputChange(Sender: TObject);
@@ -587,7 +664,26 @@ begin
     if not OK then
     begin
       SetStatus('Apply failed', clDanger);
-      MessageDlg('xrandr failed', Output, mtError, [mbOK], 0);
+      if (Pos('RRSetScreenSize', Output) > 0) or
+         (Pos('BadMatch', Output) > 0) then
+        MessageDlg('Cannot resize the X screen',
+          'xrandr could not grow the virtual desktop to fit this layout.' +
+          LineEnding + LineEnding +
+          'The NVIDIA driver fixes the maximum X screen size when X starts, ' +
+          'so a layout that needs a larger desktop than the current one is ' +
+          'refused at runtime -- even though every output supports it.' +
+          LineEnding + LineEnding +
+          'Fix: add a large enough Virtual line to the Display subsection of ' +
+          'the Screen section in /etc/X11/xorg.conf, then restart X. For ' +
+          'example:' + LineEnding + LineEnding +
+          '    SubSection "Display"' + LineEnding +
+          '        Depth 24' + LineEnding +
+          '        Virtual 8760 2160' + LineEnding +
+          '    EndSubSection' + LineEnding + LineEnding +
+          'Raw error:' + LineEnding + Output,
+          mtError, [mbOK], 0)
+      else
+        MessageDlg('xrandr failed', Output, mtError, [mbOK], 0);
       Exit;
     end;
 

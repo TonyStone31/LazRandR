@@ -19,7 +19,7 @@ unit uTouch;
 interface
 
 uses
-  Classes, SysUtils, uDisplayTypes, uXRandR;
+  Classes, SysUtils, StrUtils, uDisplayTypes, uXRandR;
 
 type
 
@@ -52,6 +52,13 @@ type
 
     { Every map command, for the persistence script. }
     procedure BuildAllCommands(List: TStrings; UseDesiredLayout: boolean);
+
+    { Enable or disable a device outright. A touchscreen attached to an
+      output that is off still reports across the whole desktop and will
+      fight the mouse for the pointer, so being able to switch it off from
+      here is not a luxury. }
+    function SetDeviceEnabled(Index: integer; AEnabled: boolean;
+      out Output: string): boolean;
 
     function IndexOfDevice(Id: integer): integer;
     function HasPendingChanges: boolean;
@@ -163,8 +170,12 @@ begin
     begin
       Line := Lines[i];
 
-      { Only slave pointers can carry a transformation matrix. }
-      if Pos('slave  pointer', Line) = 0 then Continue;
+      { Slave pointers carry a transformation matrix. A DISABLED device is
+        reported as "floating slave" instead -- match it too, otherwise a
+        device vanishes from the UI the moment you switch it off and there is
+        no way to switch it back on. }
+      if (Pos('slave  pointer', Line) = 0) and
+         (Pos('floating slave', Line) = 0) then Continue;
 
       P := Pos('id=', Line);
       if P = 0 then Continue;
@@ -214,6 +225,14 @@ begin
       FDevices[n].IsSlave := True;
       FDevices[n].Matrix := M;
       FDevices[n].HasMatrix := True;
+      FDevices[n].Enabled := Pos('Device Enabled', Props) = 0;
+      P := Pos('Device Enabled', Props);
+      if P > 0 then
+      begin
+        Q := PosEx(':', Props, P);
+        FDevices[n].Enabled := (Q > 0) and
+          (Pos('1', Copy(Props, Q, 8)) > 0);
+      end;
       FDevices[n].MappedOutput := '';
       FDevices[n].DesiredOutput := '';
     end;
@@ -354,6 +373,20 @@ begin
   finally
     Cmds.Free;
   end;
+end;
+
+function TTouchManager.SetDeviceEnabled(Index: integer; AEnabled: boolean;
+  out Output: string): boolean;
+const
+  Verb: array[boolean] of string = ('disable', 'enable');
+begin
+  Result := False;
+  Output := '';
+  if (Index < 0) or (Index > High(FDevices)) then Exit;
+  Result := FXR.Run(Format('xinput %s %d', [Verb[AEnabled], FDevices[Index].Id]),
+    Output);
+  if Result then
+    FDevices[Index].Enabled := AEnabled;
 end;
 
 function TTouchManager.IndexOfDevice(Id: integer): integer;
