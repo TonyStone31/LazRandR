@@ -81,6 +81,14 @@ object frmMain: TfrmMain
       Caption = 'View Script'
       OnClick = btnPreviewClick
     end
+    object btnGreeter: TBCButton
+      Left = 468
+      Height = 38
+      Top = 14
+      Width = 186
+      Caption = 'Login Screen...'
+      OnClick = btnGreeterClick
+    end
     object btnRevert: TBCButton
       Left = 1084
       Height = 38

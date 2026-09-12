@@ -12,12 +12,14 @@ uses
   ufrmScriptPreview,
   ufrmIdentify,
   ufrmConfirm,
+  ufrmGreeter,
   uDisplayTypes,
   uXRandR,
   uTouch,
   uTheme,
   uLayoutCanvas,
-  uProfiles;
+  uProfiles,
+  uGreeter;
 
 {$R *.res}
 

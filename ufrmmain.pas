@@ -15,14 +15,15 @@ uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, StdCtrls, ExtCtrls,
   Math, LCLType, Types,
   BCPanel, BCButton, BCLabel, BCTypes,
-  uDisplayTypes, uXRandR, uTouch, uProfiles, uTheme, uLayoutCanvas,
-  ufrmScriptPreview, ufrmIdentify, ufrmConfirm;
+  uDisplayTypes, uXRandR, uTouch, uProfiles, uGreeter, uTheme, uLayoutCanvas,
+  ufrmScriptPreview, ufrmIdentify, ufrmConfirm, ufrmGreeter;
 
 type
 
   { TfrmMain }
 
   TfrmMain = class(TForm)
+    btnGreeter: TBCButton;
     btnIdentify: TBCButton;
     btnLoadProfile: TBCButton;
     btnMapSelected: TBCButton;
@@ -69,6 +70,7 @@ type
     timHotplug: TTimer;
     timIdentify: TTimer;
     procedure btnApplyClick(Sender: TObject);
+    procedure btnGreeterClick(Sender: TObject);
     procedure btnIdentifyClick(Sender: TObject);
     procedure btnLoadProfileClick(Sender: TObject);
     procedure btnMapSelectedClick(Sender: TObject);
@@ -96,6 +98,7 @@ type
     FXR: TXRandR;
     FTouch: TTouchManager;
     FStore: TProfileStore;
+    FGreeter: TGreeterConfig;
     FCanvas: TLayoutCanvas;
     FLoading: boolean;          // guards combo OnChange while repopulating
     FTopology: string;          // last seen hardware signature, for hotplug
@@ -146,6 +149,9 @@ begin
   FStore := TProfileStore.Create(FXR, FTouch);
   FStore.EnsureDirs;
 
+  FGreeter := TGreeterConfig.Create(FXR, FTouch);
+  FGreeter.Detect;
+
   FCanvas := TLayoutCanvas.Create(Self);
   FCanvas.Parent := pnlCanvasHost;
   FCanvas.Align := alClient;
@@ -182,6 +188,7 @@ end;
 procedure TfrmMain.FormDestroy(Sender: TObject);
 begin
   DestroyIdentifiers;
+  FGreeter.Free;
   FStore.Free;
   FTouch.Free;
   FXR.Free;
@@ -226,6 +233,7 @@ begin
   SkinButton(btnIdentify, bkNeutral);
   SkinButton(btnReload, bkNeutral);
   SkinButton(btnPreview, bkNeutral);
+  SkinButton(btnGreeter, bkNeutral);
   SkinButton(btnMapSelected, bkNeutral, 13);
   SkinButton(btnToggleDevice, bkNeutral, 13);
   SkinButton(btnSaveProfile, bkNeutral, 13);
@@ -1033,6 +1041,27 @@ begin
     end;
   finally
     L.Free;
+  end;
+end;
+
+{ The greeter runs long before any session script does, and it is the only
+  place the startup race can actually be fixed -- by the time a session
+  autostart entry runs, the mirrored login screen has already happened. }
+procedure TfrmMain.btnGreeterClick(Sender: TObject);
+var
+  F: TfrmGreeter;
+  Sink, Source: string;
+begin
+  FXR.RefreshProviders;
+  Sink := FXR.FindSinkProvider;
+  Source := FXR.FindSourceProvider;
+
+  F := TfrmGreeter.Create(Self);
+  try
+    F.Setup(FGreeter, (Sink <> '') and (Source <> ''), Sink, Source);
+    F.ShowModal;
+  finally
+    F.Free;
   end;
 end;
 

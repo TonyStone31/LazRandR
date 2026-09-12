@@ -1,0 +1,103 @@
+object frmGreeter: TfrmGreeter
+  Left = 300
+  Height = 700
+  Top = 160
+  Width = 940
+  Caption = 'Login screen layout'
+  ClientHeight = 700
+  ClientWidth = 940
+  Constraints.MinHeight = 440
+  Constraints.MinWidth = 700
+  DesignTimePPI = 96
+  Position = poMainFormCenter
+  LCLVersion = '4.99.0.0'
+  OnCreate = FormCreate
+  object pnlTop: TBCPanel
+    Left = 0
+    Height = 92
+    Top = 0
+    Width = 940
+    Align = alTop
+    BevelInner = bvNone
+    BevelOuter = bvNone
+    TabOrder = 0
+    object lblHeading: TBCLabel
+      AutoSize = False
+      Left = 20
+      Height = 22
+      Top = 10
+      Width = 700
+      Caption = 'Login screen layout'
+    end
+    object lblDetect: TBCLabel
+      AutoSize = False
+      Left = 20
+      Height = 16
+      Top = 36
+      Width = 900
+      Caption = 'Detecting login manager...'
+    end
+    object lblPaths: TBCLabel
+      AutoSize = False
+      Left = 20
+      Height = 32
+      Top = 54
+      Width = 900
+      Caption = 'paths'
+    end
+  end
+  object memScript: TMemo
+    Left = 0
+    Height = 542
+    Top = 92
+    Width = 940
+    Align = alClient
+    ScrollBars = ssAutoBoth
+    TabOrder = 1
+    WordWrap = False
+  end
+  object pnlBottom: TBCPanel
+    Left = 0
+    Height = 66
+    Top = 634
+    Width = 940
+    Align = alBottom
+    BevelInner = bvNone
+    BevelOuter = bvNone
+    TabOrder = 2
+    object btnCopy: TBCButton
+      Left = 20
+      Height = 36
+      Top = 15
+      Width = 140
+      Caption = 'Copy'
+      OnClick = btnCopyClick
+    end
+    object btnRemove: TBCButton
+      Left = 170
+      Height = 36
+      Top = 15
+      Width = 180
+      Caption = 'Remove hook'
+      OnClick = btnRemoveClick
+    end
+    object btnInstall: TBCButton
+      Left = 540
+      Height = 36
+      Top = 15
+      Width = 240
+      Anchors = [akTop, akRight]
+      Caption = 'Write to login manager'
+      OnClick = btnInstallClick
+    end
+    object btnClose: TBCButton
+      Left = 790
+      Height = 36
+      Top = 15
+      Width = 130
+      Anchors = [akTop, akRight]
+      Caption = 'Close'
+      OnClick = btnCloseClick
+    end
+  end
+end
