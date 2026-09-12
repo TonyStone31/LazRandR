@@ -265,18 +265,36 @@ object frmMain: TfrmMain
       Caption = 'Disable'
       OnClick = btnToggleDeviceClick
     end
+    object lblScaleCap: TBCLabel
+      AutoSize = False
+      Left = 16
+      Height = 15
+      Top = 498
+      Width = 308
+      Caption = 'Interface scale (all displays)'
+    end
+    object cboScale: TComboBox
+      Left = 16
+      Height = 30
+      Top = 516
+      Width = 308
+      ItemHeight = 22
+      Style = csDropDownList
+      TabOrder = 12
+      OnChange = cboScaleChange
+    end
     object lblSecSave: TBCLabel
       AutoSize = False
       Left = 16
       Height = 16
-      Top = 508
+      Top = 562
       Width = 308
       Caption = 'PERSISTENCE'
     end
     object cboProfile: TComboBox
       Left = 16
       Height = 30
-      Top = 530
+      Top = 584
       Width = 308
       ItemHeight = 22
       TabOrder = 8
@@ -284,7 +302,7 @@ object frmMain: TfrmMain
     object btnSaveProfile: TBCButton
       Left = 16
       Height = 32
-      Top = 568
+      Top = 622
       Width = 150
       Caption = 'Save'
       OnClick = btnSaveProfileClick
@@ -292,7 +310,7 @@ object frmMain: TfrmMain
     object btnLoadProfile: TBCButton
       Left = 174
       Height = 32
-      Top = 568
+      Top = 622
       Width = 150
       Caption = 'Load'
       OnClick = btnLoadProfileClick
@@ -300,7 +318,7 @@ object frmMain: TfrmMain
     object chkAutostart: TCheckBox
       Left = 16
       Height = 22
-      Top = 612
+      Top = 664
       Width = 308
       Caption = 'Re-apply at every login'
       TabOrder = 11
@@ -309,8 +327,8 @@ object frmMain: TfrmMain
     object lblAutoHint: TBCLabel
       AutoSize = False
       Left = 16
-      Height = 60
-      Top = 640
+      Height = 44
+      Top = 690
       Width = 308
       Caption = 'Writes a script that restores this layout and the touch mapping.'
     end

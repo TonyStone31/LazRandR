@@ -51,6 +51,11 @@ type
       Returns '' when nothing would change. }
     function BuildApplyCommand: string;
 
+    { The command that puts things back exactly as they are right now.
+      Captured before an apply so a change can be undone without having to
+      trust that the display is still readable afterwards. }
+    function BuildRestoreCommand: string;
+
     { Run an arbitrary command, capturing stdout+stderr. }
     function Run(const Cmd: string; out Output: string): boolean;
 
@@ -708,6 +713,34 @@ begin
     S := S + ' --pos ' + IntToStr(FOutputs[i].DesiredX) + 'x' +
          IntToStr(FOutputs[i].DesiredY);
     if FOutputs[i].DesiredPrimary then
+      S := S + ' --primary';
+  end;
+  Result := S;
+end;
+
+function TXRandR.BuildRestoreCommand: string;
+var
+  i: integer;
+  S: string;
+begin
+  S := 'xrandr';
+  for i := 0 to High(FOutputs) do
+  begin
+    if not FOutputs[i].Connected and not FOutputs[i].Active then Continue;
+
+    S := S + ' --output ' + FOutputs[i].Name;
+    if not FOutputs[i].Active then
+    begin
+      S := S + ' --off';
+      Continue;
+    end;
+    S := S + ' --mode ' + IntToStr(FOutputs[i].ModeW) + 'x' +
+         IntToStr(FOutputs[i].ModeH);
+    if FOutputs[i].Rate > 0 then
+      S := S + ' --rate ' + RateToStr(FOutputs[i].Rate);
+    S := S + ' --rotate ' + RotationNames[FOutputs[i].Rotation];
+    S := S + ' --pos ' + IntToStr(FOutputs[i].X) + 'x' + IntToStr(FOutputs[i].Y);
+    if FOutputs[i].Primary then
       S := S + ' --primary';
   end;
   Result := S;

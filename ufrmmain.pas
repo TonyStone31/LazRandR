@@ -13,10 +13,10 @@ interface
 
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, StdCtrls, ExtCtrls,
-  Math, LCLType,
+  Math, LCLType, Types,
   BCPanel, BCButton, BCLabel, BCTypes,
   uDisplayTypes, uXRandR, uTouch, uProfiles, uTheme, uLayoutCanvas,
-  ufrmScriptPreview, ufrmIdentify;
+  ufrmScriptPreview, ufrmIdentify, ufrmConfirm;
 
 type
 
@@ -36,6 +36,7 @@ type
     cboRate: TComboBox;
     cboResolution: TComboBox;
     cboRotation: TComboBox;
+    cboScale: TComboBox;
     cboTouchDevice: TComboBox;
     cboTouchOutput: TComboBox;
     chkAutostart: TCheckBox;
@@ -49,6 +50,7 @@ type
     lblResCap: TBCLabel;
     lblRotCap: TBCLabel;
     lblSecDisplay: TBCLabel;
+    lblScaleCap: TBCLabel;
     lblSecSave: TBCLabel;
     lblSecTouch: TBCLabel;
     lblStatus: TBCLabel;
@@ -73,6 +75,7 @@ type
     procedure cboRateChange(Sender: TObject);
     procedure cboResolutionChange(Sender: TObject);
     procedure cboRotationChange(Sender: TObject);
+    procedure cboScaleChange(Sender: TObject);
     procedure cboTouchDeviceChange(Sender: TObject);
     procedure cboTouchOutputChange(Sender: TObject);
     procedure chkAutostartChange(Sender: TObject);
@@ -96,6 +99,7 @@ type
     procedure RefreshProfileList;
     procedure PopulateSide;
     procedure PopulateTouchPanel;
+    procedure PopulateScale;
     procedure UpdateToggleCaption;
     procedure UpdateStatus;
     procedure SetStatus(const S: string; Col: TColor);
@@ -108,6 +112,11 @@ type
     procedure DestroyIdentifiers;
   public
   end;
+
+const
+  { Long enough to read the dialog and find the mouse on an unfamiliar
+    layout, short enough that a black screen is not a crisis. }
+  RevertSeconds = 15;
 
 var
   frmMain: TfrmMain;
@@ -156,6 +165,7 @@ begin
 
   chkAutostart.Checked := FStore.AutostartInstalled;
   RefreshProfileList;
+  PopulateScale;
 
   FTopology := FXR.TopologyFingerprint;
   timHotplug.Enabled := True;
@@ -190,6 +200,7 @@ begin
   SkinLabel(lblRotCap, clTextDim, 12, False, bcaLeftCenter, clSurface);
   SkinLabel(lblDevCap, clTextDim, 12, False, bcaLeftCenter, clSurface);
   SkinLabel(lblMapCap, clTextDim, 12, False, bcaLeftCenter, clSurface);
+  SkinLabel(lblScaleCap, clTextDim, 12, False, bcaLeftCenter, clSurface);
   SkinLabel(lblTouchInfo, clTextDim, 12, False, bcaLeftTop, clSurface);
   SkinLabel(lblAutoHint, clTextFaint, 11, False, bcaLeftTop, clSurface);
   lblTouchInfo.FontEx.WordBreak := True;
@@ -213,6 +224,7 @@ begin
   SkinCombo(cboTouchDevice);
   SkinCombo(cboTouchOutput);
   SkinCombo(cboProfile);
+  SkinCombo(cboScale);
 
   SkinCheck(chkEnabled);
   SkinCheck(chkPrimary);
@@ -406,6 +418,58 @@ begin
   finally
     FLoading := False;
   end;
+end;
+
+procedure TfrmMain.PopulateScale;
+var
+  Output: string;
+  V, i: integer;
+begin
+  FLoading := True;
+  try
+    cboScale.Items.Clear;
+    cboScale.Items.Add('Auto');
+    cboScale.Items.Add('100%');
+    cboScale.Items.Add('200%');
+    cboScale.Items.Add('300%');
+    cboScale.Items.Add('400%');
+
+    { Cinnamon's own display panel drives this same key. On X11 the interface
+      scale is a single global factor, not per-monitor -- there is no honest
+      way to offer it per screen here. }
+    V := 0;
+    if FXR.Run('gsettings get org.cinnamon.desktop.interface scaling-factor',
+               Output) then
+    begin
+      Output := Trim(Output);
+      for i := Length(Output) downto 1 do
+        if not (Output[i] in ['0'..'9']) then
+        begin
+          Output := Copy(Output, i + 1, MaxInt);
+          Break;
+        end;
+      V := StrToIntDef(Trim(Output), 0);
+    end;
+    if (V < 0) or (V > 4) then V := 0;
+    cboScale.ItemIndex := V;
+  finally
+    FLoading := False;
+  end;
+end;
+
+procedure TfrmMain.cboScaleChange(Sender: TObject);
+var
+  Output: string;
+begin
+  if FLoading then Exit;
+  if cboScale.ItemIndex < 0 then Exit;
+
+  if FXR.Run(Format('gsettings set org.cinnamon.desktop.interface ' +
+    'scaling-factor %d', [cboScale.ItemIndex]), Output) then
+    SetStatus('Interface scale set to ' + cboScale.Items[cboScale.ItemIndex] +
+      ' — some apps pick it up only when restarted', clOkay)
+  else
+    SetStatus('Could not set interface scale: ' + Output, clDanger);
 end;
 
 procedure TfrmMain.UpdateToggleCaption;
@@ -681,56 +745,131 @@ end;
 
 procedure TfrmMain.btnApplyClick(Sender: TObject);
 var
-  Output, Err: string;
-  OK: boolean;
+  Output, Err, RestoreCmd: string;
+  TouchRestore: TStringList;
+  OK, GeometryChanged, OnScreen: boolean;
+  i, PX, PY, PW, PH, CtrX, CtrY: integer;
+  PrefRect, SafeRect: TRect;
+  Conf: TfrmConfirm;
 begin
-  Screen.Cursor := crHourGlass;
+  GeometryChanged := FXR.HasPendingChanges;
+
+  { Snapshot the world before touching it. Both halves: geometry on its own
+    would leave input mapped to a layout that no longer exists. }
+  RestoreCmd := FXR.BuildRestoreCommand;
+  TouchRestore := TStringList.Create;
   try
-    OK := FXR.Apply(Output);
-    if not OK then
-    begin
-      SetStatus('Apply failed', clDanger);
-      if (Pos('RRSetScreenSize', Output) > 0) or
-         (Pos('BadMatch', Output) > 0) then
-        MessageDlg('Cannot resize the X screen',
-          'xrandr could not grow the virtual desktop to fit this layout.' +
-          LineEnding + LineEnding +
-          'The NVIDIA driver fixes the maximum X screen size when X starts, ' +
-          'so a layout that needs a larger desktop than the current one is ' +
-          'refused at runtime -- even though every output supports it.' +
-          LineEnding + LineEnding +
-          'Fix: add a large enough Virtual line to the Display subsection of ' +
-          'the Screen section in /etc/X11/xorg.conf, then restart X. For ' +
-          'example:' + LineEnding + LineEnding +
-          '    SubSection "Display"' + LineEnding +
-          '        Depth 24' + LineEnding +
-          '        Virtual 8760 2160' + LineEnding +
-          '    EndSubSection' + LineEnding + LineEnding +
-          'Raw error:' + LineEnding + Output,
-          mtError, [mbOK], 0)
-      else
-        MessageDlg('xrandr failed', Output, mtError, [mbOK], 0);
-      Exit;
+    FTouch.BuildRestoreCommands(TouchRestore);
+
+    Screen.Cursor := crHourGlass;
+    try
+      OK := FXR.Apply(Output);
+      if not OK then
+      begin
+        SetStatus('Apply failed', clDanger);
+        if (Pos('RRSetScreenSize', Output) > 0) or
+           (Pos('BadMatch', Output) > 0) then
+          MessageDlg('Cannot resize the X screen',
+            'xrandr could not grow the virtual desktop to fit this layout.' +
+            LineEnding + LineEnding +
+            'The NVIDIA driver fixes the maximum X screen size when X starts, ' +
+            'so a layout that needs a larger desktop than the current one is ' +
+            'refused at runtime -- even though every output supports it.' +
+            LineEnding + LineEnding +
+            'Fix: add a large enough Virtual line to the Display subsection of ' +
+            'the Screen section in /etc/X11/xorg.conf, then restart X. For ' +
+            'example:' + LineEnding + LineEnding +
+            '    SubSection "Display"' + LineEnding +
+            '        Depth 24' + LineEnding +
+            '        Virtual 8960 2160' + LineEnding +
+            '    EndSubSection' + LineEnding + LineEnding +
+            'Raw error:' + LineEnding + Output,
+            mtError, [mbOK], 0)
+        else
+          MessageDlg('xrandr failed', Output, mtError, [mbOK], 0);
+        Exit;
+      end;
+
+      FXR.Refresh;
+      FTouch.ApplyAll(Output);
+      FXR.Refresh;
+      FTouch.Refresh;
+      FCanvas.Attach(FXR, FTouch);
+      PopulateSide;
+      PopulateTouchPanel;
+    finally
+      Screen.Cursor := crDefault;
     end;
 
-    { Geometry moved, so every confined device needs its matrix recomputed
-      against the new screen size before it means anything. }
-    FXR.Refresh;
-    FTouch.ApplyAll(Output);
+    { Only geometry can leave the machine unusable, so only geometry needs
+      confirming. A touch remap is harmless and silent. }
+    if GeometryChanged then
+    begin
+      { Safe spot: the primary output. }
+      PX := 0; PY := 0; PW := FXR.ScreenW; PH := FXR.ScreenH;
+      for i := 0 to High(FXR.Outputs) do
+        if FXR.Outputs[i].Active and FXR.Outputs[i].Primary then
+        begin
+          PX := FXR.Outputs[i].X;
+          PY := FXR.Outputs[i].Y;
+          PW := FXR.Outputs[i].LogicalW;
+          PH := FXR.Outputs[i].LogicalH;
+          Break;
+        end;
+      SafeRect := Bounds(PX, PY, PW, PH);
 
-    FXR.Refresh;
-    FTouch.Refresh;
-    FCanvas.Attach(FXR, FTouch);
-    PopulateSide;
-    PopulateTouchPanel;
+      { Preferred spot: over this window -- but only if this window is still
+        on a screen that exists after the change. }
+      PrefRect := Bounds(Left, Top, Width, Height);
+      CtrX := Left + Width div 2;
+      CtrY := Top + Height div 2;
+      OnScreen := False;
+      for i := 0 to High(FXR.Outputs) do
+        if FXR.Outputs[i].Active and
+           (CtrX >= FXR.Outputs[i].X) and
+           (CtrX < FXR.Outputs[i].X + FXR.Outputs[i].LogicalW) and
+           (CtrY >= FXR.Outputs[i].Y) and
+           (CtrY < FXR.Outputs[i].Y + FXR.Outputs[i].LogicalH) then
+        begin
+          OnScreen := True;
+          Break;
+        end;
+      if not OnScreen then
+        PrefRect := SafeRect;
 
-    { Keep the replay script in step with what is now on screen. }
+      Conf := TfrmConfirm.Create(Self);
+      try
+        if Conf.RunOn(PrefRect, SafeRect, RevertSeconds) <> mrOk then
+        begin
+          Screen.Cursor := crHourGlass;
+          try
+            FXR.Run(RestoreCmd, Output);
+            for i := 0 to TouchRestore.Count - 1 do
+              FXR.Run(TouchRestore[i], Output);
+            FXR.Refresh;
+            FTouch.Refresh;
+            FCanvas.Attach(FXR, FTouch);
+            PopulateSide;
+            PopulateTouchPanel;
+          finally
+            Screen.Cursor := crDefault;
+          end;
+          FTopology := FXR.TopologyFingerprint;
+          UpdateStatus;
+          SetStatus('Reverted — settings were not confirmed', clWarn);
+          Exit;
+        end;
+      finally
+        Conf.Free;
+      end;
+    end;
+
     FStore.WriteScript(Err, False, '', '');
-
+    FTopology := FXR.TopologyFingerprint;
     UpdateStatus;
     SetStatus('Applied', clOkay);
   finally
-    Screen.Cursor := crDefault;
+    TouchRestore.Free;
   end;
 end;
 

@@ -17,14 +17,19 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC
 
 CLEAN=0
 VERBOSE=0
+MODE="Release"
 for arg in "$@"; do
     case "$arg" in
         --clean)   CLEAN=1 ;;
         --verbose) VERBOSE=1 ;;
+        --debug)   MODE="Debug" ;;
+        --release) MODE="Release" ;;
         --help)
-            echo "Usage: ./build.sh [--clean] [--verbose]"
+            echo "Usage: ./build.sh [--clean] [--verbose] [--debug|--release]"
             echo "  --clean    remove lib/ and the binary before building"
             echo "  --verbose  show the full compiler log instead of a summary"
+            echo "  --debug    build with range/overflow checks and debug info"
+            echo "  --release  optimised, smart-linked, stripped (default)"
             exit 0 ;;
         *) echo -e "${RED}Unknown option: $arg${NC}"; exit 1 ;;
     esac
@@ -32,7 +37,7 @@ done
 
 cd "$(dirname "$0")" || exit 1
 
-echo -e "${BLUE}=== Building LazRandR (${WIDGETSET}) ===${NC}"
+echo -e "${BLUE}=== Building LazRandR (${WIDGETSET}, ${MODE}) ===${NC}"
 
 if [ ! -x "$LAZARUS_DIR/lazbuild" ]; then
     echo -e "${RED}lazbuild not found at $LAZARUS_DIR/lazbuild${NC}"
@@ -68,6 +73,7 @@ trap 'rm -f "$LOG"' EXIT
 "$LAZARUS_DIR/lazbuild" \
     --pcp="$PCP_DIR" \
     --ws="$WIDGETSET" \
+    --build-mode="$MODE" \
     "$PROJECT_FILE" >"$LOG" 2>&1
 RESULT=$?
 
@@ -94,5 +100,6 @@ LINKED=$(ldd "$EXECUTABLE" 2>/dev/null | grep -o 'libgtk-[0-9x.-]*so[0-9.]*' | h
 
 echo -e "${GREEN}=== Build OK ===${NC}"
 echo -e "  binary:    ${GREEN}./$EXECUTABLE${NC} ($SIZE)"
+echo -e "  mode:      ${GREEN}${MODE}${NC}"
 echo -e "  widgetset: ${GREEN}${WIDGETSET}${NC}${LINKED:+  (linked: $LINKED)}"
 echo -e "  run with:  ${YELLOW}./run.sh${NC}"

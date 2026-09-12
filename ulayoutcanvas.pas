@@ -44,6 +44,7 @@ type
     FOnCommit: TNotifyEvent;
     FOnSelect: TTileEvent;
     FDragFromTray: boolean;
+    FTrayHot: boolean;      // cursor over the tray while dragging
     FShowTouchBadges: boolean;
 
     procedure ComputeScale(Force: boolean = False);
@@ -62,6 +63,10 @@ type
     function TrayIndexAt(CX, CY: integer): integer;
     procedure DrawTray;
     procedure DrawTrayTile(Idx, Slot: integer);
+    function TileHasButtons(Idx: integer): boolean;
+    function TileButtonRect(Idx, N: integer): TRect;
+    function TileButtonAt(Idx, CX, CY: integer): integer;
+    procedure DrawTileButtons(Idx: integer);
     function OutputHasTouch(Idx: integer): boolean;
 
     procedure DrawBackdrop;
@@ -113,8 +118,13 @@ const
     it grabs, so a large value reads as the thing jumping out from under the
     cursor. The holding power comes from Break instead, which costs nothing
     visually. }
-  SnapAcquireCanvasPx = 12;
-  SnapBreakCanvasPx = 38;
+  SnapAcquireCanvasPx = 9;
+  SnapBreakCanvasPx = 32;
+
+  { Leave slack around the arrangement instead of filling the canvas edge to
+    edge. Tiles sized to the last pixel made dragging toward an outer edge
+    fiddly, because there was nowhere to overshoot into. }
+  LayoutFillFactor = 0.86;
 
   { How far a screen may be dragged beyond the others before it is stopped.
     Without this the layout's bounding box grows without limit, the canvas
@@ -138,6 +148,14 @@ const
   TrayTileH = 56;
   TrayGap = 10;
   TrayLabelH = 18;
+
+  { Quick controls drawn on the selected tile. Rotating or marking a primary
+    is most of what anyone does here, and reaching for the side panel for it
+    breaks the flow of arranging screens. }
+  TileBtnSize = 28;
+  TileBtnGap = 6;
+  TileBtnMinW = 150;      // tile must be at least this big to carry them
+  TileBtnMinH = 92;
 
 constructor TLayoutCanvas.Create(AOwner: TComponent);
 begin
@@ -261,7 +279,7 @@ begin
 
   SX := AvailW / BoxW;
   SY := AvailH / BoxH;
-  Ideal := Min(SX, SY);
+  Ideal := Min(SX, SY) * LayoutFillFactor;
 
   { Refitting on every drop made the untouched screens visibly grow and
     shrink as you moved another one around -- the layout was fine, the zoom
@@ -375,9 +393,12 @@ end;
 
 function TLayoutCanvas.TrayVisible: boolean;
 begin
-  { Shown when something is parked, and also while dragging so there is
-    somewhere obvious to drop a screen you want switched off. }
-  Result := (DisabledCount > 0) or FDragging;
+  { Always reserved, never conditional. Showing it only when occupied or
+    mid-drag meant the strip appeared the instant a drag began, the layout
+    area below it shrank, and every tile jumped -- while you were holding
+    one. A permanent strip costs a little height and makes the drop target
+    always available and always in the same place. }
+  Result := (FXR <> nil) and (FXR.ConnectedOutputCount > 0);
 end;
 
 function TLayoutCanvas.TrayBounds: TRect;
@@ -728,6 +749,118 @@ begin
   end;
 end;
 
+function TLayoutCanvas.TileHasButtons(Idx: integer): boolean;
+var
+  R: TRect;
+begin
+  Result := False;
+  if (Idx < 0) or (Idx > High(FXR.Outputs)) then Exit;
+  if not FXR.Outputs[Idx].DesiredEnabled then Exit;
+  if Idx <> FSelected then Exit;
+  R := TileRect(Idx);
+  Result := (R.Right - R.Left >= TileBtnMinW) and
+            (R.Bottom - R.Top >= TileBtnMinH);
+end;
+
+function TLayoutCanvas.TileButtonRect(Idx, N: integer): TRect;
+var
+  R: TRect;
+  X, Y: integer;
+begin
+  R := TileRect(Idx);
+  { Laid out right to left from the tile's top-right corner. }
+  X := R.Right - 9 - (N + 1) * TileBtnSize - N * TileBtnGap;
+  Y := R.Top + 9;
+  Result := Rect(X, Y, X + TileBtnSize, Y + TileBtnSize);
+end;
+
+function TLayoutCanvas.TileButtonAt(Idx, CX, CY: integer): integer;
+var
+  N: integer;
+begin
+  Result := -1;
+  if not TileHasButtons(Idx) then Exit;
+  for N := 0 to 2 do
+    if PtInRect(TileButtonRect(Idx, N), Point(CX, CY)) then
+      Exit(N);
+end;
+
+procedure TLayoutCanvas.DrawTileButtons(Idx: integer);
+var
+  N, k: integer;
+  R: TRect;
+  Fg, Bg: TColor;
+  TW: integer;
+  CX, CY, Rad: single;
+  Pts: array[0..9] of TPointF;
+  Ang: single;
+  S: string;
+begin
+  if not TileHasButtons(Idx) then Exit;
+
+  for N := 0 to 2 do
+  begin
+    R := TileButtonRect(Idx, N);
+    if R.Left < TileRect(Idx).Left then Continue;
+
+    Bg := clRaised;
+    Fg := clText;
+    if (N = 1) and FXR.Outputs[Idx].DesiredPrimary then
+    begin
+      Bg := clAccent;
+      Fg := clWhite;
+    end;
+    if N = 2 then Fg := clDangerHi;
+
+    FBmp.FillRoundRectAntialias(R.Left, R.Top, R.Right, R.Bottom, 7, 7,
+      ToBGRA(Bg, 232));
+    FBmp.RoundRectAntialias(R.Left, R.Top, R.Right, R.Bottom, 7, 7,
+      ToBGRA(clHairline, 210), 1);
+
+    CX := (R.Left + R.Right) / 2;
+    CY := (R.Top + R.Bottom) / 2;
+
+    { Glyphs are drawn rather than typed: a font that happens to lack the
+      character renders a tofu box, and these are small enough that the
+      shapes are crisper drawn anyway. }
+    case N of
+      0:
+        begin
+          S := '90°';
+          FBmp.FontName := UIFont;
+          FBmp.FontStyle := [fsBold];
+          FBmp.FontHeight := 12;
+          TW := FBmp.TextSize(S).cx;
+          FBmp.TextOut(Round(CX) - TW div 2,
+            Round(CY) - FBmp.TextSize(S).cy div 2, S, ToBGRA(Fg));
+        end;
+      1:
+        begin
+          { Five-pointed star: alternate outer and inner radius. }
+          Rad := TileBtnSize * 0.30;
+          for k := 0 to 9 do
+          begin
+            Ang := -Pi / 2 + k * Pi / 5;
+            if k mod 2 = 0 then
+              Pts[k] := PointF(CX + Rad * Cos(Ang), CY + Rad * Sin(Ang))
+            else
+              Pts[k] := PointF(CX + Rad * 0.44 * Cos(Ang),
+                               CY + Rad * 0.44 * Sin(Ang));
+          end;
+          FBmp.FillPolyAntialias(Pts, ToBGRA(Fg));
+        end;
+      2:
+        begin
+          Rad := TileBtnSize * 0.20;
+          FBmp.DrawLineAntialias(Round(CX - Rad), Round(CY - Rad),
+            Round(CX + Rad), Round(CY + Rad), ToBGRA(Fg), 2);
+          FBmp.DrawLineAntialias(Round(CX + Rad), Round(CY - Rad),
+            Round(CX - Rad), Round(CY + Rad), ToBGRA(Fg), 2);
+        end;
+    end;
+  end;
+end;
+
 procedure TLayoutCanvas.DrawTray;
 var
   R: TRect;
@@ -744,10 +877,15 @@ begin
   FBmp.FontStyle := [fsBold];
   FBmp.FontHeight := 11;
 
-  if DisabledCount = 0 then
+  if FDragging and FTrayHot then
+    Cap := 'RELEASE TO SWITCH THIS SCREEN OFF'
+  else if DisabledCount = 0 then
     Cap := 'INACTIVE  —  drop a screen here to switch it off'
   else
-    Cap := 'INACTIVE  —  drag onto the canvas to switch on';
+    Cap := 'INACTIVE  —  drag onto the canvas to switch on, or drop one here to switch off';
+  if FDragging and FTrayHot then
+    FBmp.TextOut(TrayPad, 5, Cap, ToBGRA(clDangerHi))
+  else
   FBmp.TextOut(TrayPad, 5, Cap, ToBGRA(clTextFaint));
 
   Slot := 0;
@@ -760,10 +898,21 @@ begin
   end;
 
   { Make the drop target obvious while a screen is in flight. }
-  if FDragging and (DisabledCount = 0) then
-    FBmp.RoundRectAntialias(TrayPad, TrayLabelH + TrayPad,
-      TrayPad + TrayTileW, TrayLabelH + TrayPad + TrayTileH,
-      8, 8, ToBGRA(clHairline, 170), 1.5);
+  if FDragging then
+  begin
+    { Light the whole strip while a screen is being held over it, so there is
+      no doubt that letting go will switch it off. }
+    if FTrayHot then
+    begin
+      FBmp.FillRect(R.Left, R.Top, R.Right, R.Bottom - 1,
+        ToBGRA(clDanger, 42), dmDrawWithTransparency);
+      FBmp.SetHorizLine(R.Left, R.Bottom - 1, R.Right - 1, ToBGRA(clDanger));
+    end;
+    if DisabledCount = 0 then
+      FBmp.RoundRectAntialias(TrayPad, TrayLabelH + TrayPad,
+        TrayPad + TrayTileW, TrayLabelH + TrayPad + TrayTileH,
+        8, 8, ToBGRA(IfThen(FTrayHot, clDanger, clHairline), 190), 1.5);
+  end;
 end;
 
 procedure TLayoutCanvas.DrawTrayTile(Idx, Slot: integer);
@@ -858,7 +1007,11 @@ begin
     if (FSelected >= 0) and (FSelected <= High(FXR.Outputs)) and
        FXR.Outputs[FSelected].Connected and
        FXR.Outputs[FSelected].DesiredEnabled then
+    begin
       DrawTile(FSelected);
+      if not FDragging then
+        DrawTileButtons(FSelected);
+    end;
 
     DrawGuides;
 
@@ -879,7 +1032,7 @@ end;
 procedure TLayoutCanvas.MouseDown(Button: TMouseButton; Shift: TShiftState;
   X, Y: integer);
 var
-  Idx, TrayIdx, LW, LH, NX, NY: integer;
+  Idx, TrayIdx, LW, LH, NX, NY, BtnN: integer;
   D: TPoint;
 begin
   inherited MouseDown(Button, Shift, X, Y);
@@ -916,6 +1069,29 @@ begin
 
   if PtInRect(TrayBounds, Point(X, Y)) and TrayVisible then Exit;
 
+  { A click on one of the selected tile's quick controls acts, and must not
+    also begin a drag. }
+  if (FSelected >= 0) and (Button = mbLeft) then
+  begin
+    BtnN := TileButtonAt(FSelected, X, Y);
+    if BtnN >= 0 then
+    begin
+      case BtnN of
+        0: FXR.Outputs[FSelected].DesiredRotation :=
+             NextRotation(FXR.Outputs[FSelected].DesiredRotation);
+        1: for LW := 0 to High(FXR.Outputs) do
+             FXR.Outputs[LW].DesiredPrimary := (LW = FSelected);
+        2: if EnabledCount > 1 then
+             FXR.Outputs[FSelected].DesiredEnabled := False;
+      end;
+      ComputeScale(False);
+      Invalidate;
+      if Assigned(FOnChanged) then FOnChanged(Self);
+      if Assigned(FOnCommit) then FOnCommit(Self);
+      Exit;
+    end;
+  end;
+
   Idx := TileAt(X, Y);
   SelectOutput(Idx);
 
@@ -949,6 +1125,8 @@ begin
 
     ClampToNeighbours(FDragIndex, NX, NY);
 
+    FTrayHot := PtInRect(TrayBounds, Point(X, Y));
+
     { Alt bypasses snapping for the rare case you want a deliberate gap. }
     if not (ssAlt in Shift) then
       ApplySnapping(FDragIndex, NX, NY)
@@ -970,7 +1148,7 @@ begin
       if Assigned(FOnChanged) then FOnChanged(Self);
     end
     else
-      Invalidate;
+      Invalidate;   // tray feedback still needs to track the cursor
   end
   else
   begin
@@ -1005,6 +1183,7 @@ begin
 
     FDragging := False;
     FDragFromTray := False;
+    FTrayHot := False;
     FDragIndex := -1;
     FGuideV := -1;
     FGuideH := -1;

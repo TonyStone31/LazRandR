@@ -1,0 +1,72 @@
+object frmConfirm: TfrmConfirm
+  Left = 400
+  Height = 250
+  Top = 400
+  Width = 560
+  BorderStyle = bsNone
+  Caption = 'Keep these settings?'
+  ClientHeight = 250
+  ClientWidth = 560
+  DesignTimePPI = 96
+  FormStyle = fsSystemStayOnTop
+  Position = poDesigned
+  ShowInTaskBar = stNever
+  LCLVersion = '4.99.0.0'
+  OnCreate = FormCreate
+  object pnlBody: TBCPanel
+    Left = 0
+    Height = 250
+    Top = 0
+    Width = 560
+    Align = alClient
+    BevelInner = bvNone
+    BevelOuter = bvNone
+    TabOrder = 0
+    object lblHeading: TBCLabel
+      AutoSize = False
+      Left = 28
+      Height = 28
+      Top = 24
+      Width = 504
+      Caption = 'Keep this display configuration?'
+    end
+    object lblDetail: TBCLabel
+      AutoSize = False
+      Left = 28
+      Height = 44
+      Top = 58
+      Width = 504
+      Caption = 'If you can read this, the new layout is working.'
+    end
+    object lblCountdown: TBCLabel
+      AutoSize = False
+      Left = 28
+      Height = 34
+      Top = 112
+      Width = 504
+      Caption = 'Reverting in 15 seconds'
+    end
+    object btnKeep: TBCButton
+      Left = 28
+      Height = 44
+      Top = 176
+      Width = 250
+      Caption = 'Keep these settings'
+      OnClick = btnKeepClick
+    end
+    object btnRevert: TBCButton
+      Left = 290
+      Height = 44
+      Top = 176
+      Width = 242
+      Caption = 'Revert now'
+      OnClick = btnRevertClick
+    end
+  end
+  object timTick: TTimer
+    Interval = 1000
+    OnTimer = timTickTimer
+    Left = 470
+    Top = 30
+  end
+end

@@ -53,6 +53,11 @@ type
     { Every map command, for the persistence script. }
     procedure BuildAllCommands(List: TStrings; UseDesiredLayout: boolean);
 
+    { Restore every device to the matrix it has right now. Paired with
+      TXRandR.BuildRestoreCommand so an undo puts input back too -- geometry
+      alone would leave touch mapped to a layout that no longer exists. }
+    procedure BuildRestoreCommands(List: TStrings);
+
     { Enable or disable a device outright. A touchscreen attached to an
       output that is off still reports across the whole desktop and will
       fight the mouse for the pointer, so being able to switch it off from
@@ -347,6 +352,15 @@ begin
     if Cmd <> '' then
       List.Add(Cmd);
   end;
+end;
+
+procedure TTouchManager.BuildRestoreCommands(List: TStrings);
+var
+  i: integer;
+begin
+  for i := 0 to High(FDevices) do
+    List.Add(Format('xinput set-prop "%s" "%s" %s',
+      [FDevices[i].Name, CTMProp, CTMToString(FDevices[i].Matrix)]));
 end;
 
 function TTouchManager.ApplyAll(out Output: string): boolean;

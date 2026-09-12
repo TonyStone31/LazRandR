@@ -11,6 +11,7 @@ uses
   ufrmMain,
   ufrmScriptPreview,
   ufrmIdentify,
+  ufrmConfirm,
   uDisplayTypes,
   uXRandR,
   uTouch,
