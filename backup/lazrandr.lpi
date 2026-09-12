@@ -27,6 +27,9 @@
     </RunParams>
     <RequiredPackages>
       <Item>
+        <PackageName Value="BGRABitmapPack"/>
+      </Item>
+      <Item>
         <PackageName Value="LCL"/>
       </Item>
     </RequiredPackages>
@@ -36,12 +39,30 @@
         <IsPartOfProject Value="True"/>
       </Unit>
       <Unit>
-        <Filename Value="unit1.pas"/>
+        <Filename Value="ufrmmain.pas"/>
         <IsPartOfProject Value="True"/>
         <ComponentName Value="Form1"/>
         <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
-        <UnitName Value="Unit1"/>
+        <UnitName Value="ufrmMain"/>
+      </Unit>
+      <Unit>
+        <Filename Value="ufrmscriptpreview.pas"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="frmScriptPreview"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+        <UnitName Value="ufrmScriptPreview"/>
+      </Unit>
+      <Unit>
+        <Filename Value="xrandrmanager.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="XRandrManager"/>
+      </Unit>
+      <Unit>
+        <Filename Value="udrawingutils.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="uDrawingUtils"/>
       </Unit>
     </Units>
   </ProjectOptions>
@@ -55,6 +76,9 @@
       <UnitOutputDirectory Value="lib/$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <Linking>
+      <Debugging>
+        <DebugInfoType Value="dsDwarf2Set"/>
+      </Debugging>
       <Options>
         <Win32>
           <GraphicApplication Value="True"/>

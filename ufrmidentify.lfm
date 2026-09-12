@@ -1,0 +1,23 @@
+object frmIdentify: TfrmIdentify
+  Left = 300
+  Height = 260
+  Top = 300
+  Width = 430
+  BorderStyle = bsNone
+  Caption = 'Identify'
+  ClientHeight = 260
+  ClientWidth = 430
+  DesignTimePPI = 96
+  FormStyle = fsSystemStayOnTop
+  Position = poDesigned
+  ShowInTaskBar = stNever
+  LCLVersion = '4.99.0.0'
+  object pbIdent: TPaintBox
+    Left = 0
+    Height = 260
+    Top = 0
+    Width = 430
+    Align = alClient
+    OnPaint = pbIdentPaint
+  end
+end

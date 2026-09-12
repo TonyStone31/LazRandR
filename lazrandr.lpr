@@ -6,20 +6,25 @@ uses
   {$IFDEF UNIX}
   cthreads,
   {$ENDIF}
-  {$IFDEF HASAMIGA}
-  athreads,
-  {$ENDIF}
-  Interfaces, // this includes the LCL widgetset
-  Forms, Unit1
-  { you can add units after this };
+  Interfaces,
+  Forms,
+  ufrmMain,
+  ufrmScriptPreview,
+  ufrmIdentify,
+  uDisplayTypes,
+  uXRandR,
+  uTouch,
+  uTheme,
+  uLayoutCanvas,
+  uProfiles;
 
 {$R *.res}
 
 begin
-  RequireDerivedFormResource:=True;
-  Application.Scaled:=True;
+  RequireDerivedFormResource := True;
+  Application.Scaled := True;
+  Application.Title := 'LazRandR';
   Application.Initialize;
-  Application.CreateForm(TForm1, Form1);
+  Application.CreateForm(TfrmMain, frmMain);
   Application.Run;
 end.
-

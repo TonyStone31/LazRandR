@@ -1,0 +1,328 @@
+object frmMain: TfrmMain
+  Left = 220
+  Height = 880
+  Top = 140
+  Width = 1400
+  Caption = 'LazRandR'
+  ClientHeight = 880
+  ClientWidth = 1400
+  Constraints.MinHeight = 620
+  Constraints.MinWidth = 1040
+  DesignTimePPI = 96
+  Position = poScreenCenter
+  LCLVersion = '4.99.0.0'
+  OnCreate = FormCreate
+  OnDestroy = FormDestroy
+  object pnlHeader: TBCPanel
+    Left = 0
+    Height = 66
+    Top = 0
+    Width = 1400
+    Align = alTop
+    BevelInner = bvNone
+    BevelOuter = bvNone
+    TabOrder = 0
+    object lblTitle: TBCLabel
+      AutoSize = False
+      Left = 22
+      Height = 26
+      Top = 11
+      Width = 220
+      Caption = 'LazRandR'
+    end
+    object lblSubtitle: TBCLabel
+      AutoSize = False
+      Left = 24
+      Height = 16
+      Top = 38
+      Width = 460
+      Caption = 'Display layout and touch input mapping'
+    end
+    object lblStatus: TBCLabel
+      AutoSize = False
+      Left = 700
+      Height = 20
+      Top = 24
+      Width = 676
+      Anchors = [akTop, akLeft, akRight]
+      Caption = 'Ready'
+    end
+  end
+  object pnlFooter: TBCPanel
+    Left = 0
+    Height = 66
+    Top = 814
+    Width = 1400
+    Align = alBottom
+    BevelInner = bvNone
+    BevelOuter = bvNone
+    TabOrder = 1
+    object btnIdentify: TBCButton
+      Left = 22
+      Height = 38
+      Top = 14
+      Width = 132
+      Caption = 'Identify'
+      OnClick = btnIdentifyClick
+    end
+    object btnReload: TBCButton
+      Left = 164
+      Height = 38
+      Top = 14
+      Width = 132
+      Caption = 'Reload'
+      OnClick = btnReloadClick
+    end
+    object btnPreview: TBCButton
+      Left = 306
+      Height = 38
+      Top = 14
+      Width = 152
+      Caption = 'View Script'
+      OnClick = btnPreviewClick
+    end
+    object btnRevert: TBCButton
+      Left = 1084
+      Height = 38
+      Top = 14
+      Width = 132
+      Anchors = [akTop, akRight]
+      Caption = 'Revert'
+      OnClick = btnRevertClick
+    end
+    object btnApply: TBCButton
+      Left = 1226
+      Height = 38
+      Top = 14
+      Width = 152
+      Anchors = [akTop, akRight]
+      Caption = 'Apply'
+      OnClick = btnApplyClick
+    end
+  end
+  object pnlSide: TBCPanel
+    Left = 1060
+    Height = 748
+    Top = 66
+    Width = 340
+    Align = alRight
+    BevelInner = bvNone
+    BevelOuter = bvNone
+    TabOrder = 2
+    object lblSecDisplay: TBCLabel
+      AutoSize = False
+      Left = 16
+      Height = 16
+      Top = 14
+      Width = 308
+      Caption = 'DISPLAY'
+    end
+    object lblOutName: TBCLabel
+      AutoSize = False
+      Left = 16
+      Height = 24
+      Top = 34
+      Width = 308
+      Caption = 'No display selected'
+    end
+    object lblResCap: TBCLabel
+      AutoSize = False
+      Left = 16
+      Height = 15
+      Top = 68
+      Width = 308
+      Caption = 'Resolution'
+    end
+    object cboResolution: TComboBox
+      Left = 16
+      Height = 30
+      Top = 86
+      Width = 308
+      ItemHeight = 22
+      Style = csDropDownList
+      TabOrder = 0
+      OnChange = cboResolutionChange
+    end
+    object lblRateCap: TBCLabel
+      AutoSize = False
+      Left = 16
+      Height = 15
+      Top = 124
+      Width = 308
+      Caption = 'Refresh rate'
+    end
+    object cboRate: TComboBox
+      Left = 16
+      Height = 30
+      Top = 142
+      Width = 308
+      ItemHeight = 22
+      Style = csDropDownList
+      TabOrder = 1
+      OnChange = cboRateChange
+    end
+    object lblRotCap: TBCLabel
+      AutoSize = False
+      Left = 16
+      Height = 15
+      Top = 180
+      Width = 308
+      Caption = 'Orientation'
+    end
+    object cboRotation: TComboBox
+      Left = 16
+      Height = 30
+      Top = 198
+      Width = 308
+      ItemHeight = 22
+      Style = csDropDownList
+      TabOrder = 2
+      OnChange = cboRotationChange
+    end
+    object chkEnabled: TCheckBox
+      Left = 16
+      Height = 22
+      Top = 238
+      Width = 150
+      Caption = 'Enabled'
+      TabOrder = 3
+      OnChange = chkEnabledChange
+    end
+    object chkPrimary: TCheckBox
+      Left = 176
+      Height = 22
+      Top = 238
+      Width = 150
+      Caption = 'Primary'
+      TabOrder = 4
+      OnChange = chkPrimaryChange
+    end
+    object lblSecTouch: TBCLabel
+      AutoSize = False
+      Left = 16
+      Height = 16
+      Top = 284
+      Width = 308
+      Caption = 'TOUCH INPUT'
+    end
+    object lblTouchInfo: TBCLabel
+      AutoSize = False
+      Left = 16
+      Height = 32
+      Top = 306
+      Width = 308
+      Caption = 'Scanning for touch devices...'
+    end
+    object lblDevCap: TBCLabel
+      AutoSize = False
+      Left = 16
+      Height = 15
+      Top = 344
+      Width = 308
+      Caption = 'Device'
+    end
+    object cboTouchDevice: TComboBox
+      Left = 16
+      Height = 30
+      Top = 362
+      Width = 308
+      ItemHeight = 22
+      Style = csDropDownList
+      TabOrder = 5
+      OnChange = cboTouchDeviceChange
+    end
+    object lblMapCap: TBCLabel
+      AutoSize = False
+      Left = 16
+      Height = 15
+      Top = 400
+      Width = 308
+      Caption = 'Confine to display'
+    end
+    object cboTouchOutput: TComboBox
+      Left = 16
+      Height = 30
+      Top = 418
+      Width = 308
+      ItemHeight = 22
+      Style = csDropDownList
+      TabOrder = 6
+      OnChange = cboTouchOutputChange
+    end
+    object btnMapSelected: TBCButton
+      Left = 16
+      Height = 32
+      Top = 456
+      Width = 308
+      Caption = 'Map to selected display'
+      OnClick = btnMapSelectedClick
+    end
+    object lblSecSave: TBCLabel
+      AutoSize = False
+      Left = 16
+      Height = 16
+      Top = 508
+      Width = 308
+      Caption = 'PERSISTENCE'
+    end
+    object cboProfile: TComboBox
+      Left = 16
+      Height = 30
+      Top = 530
+      Width = 308
+      ItemHeight = 22
+      TabOrder = 8
+    end
+    object btnSaveProfile: TBCButton
+      Left = 16
+      Height = 32
+      Top = 568
+      Width = 150
+      Caption = 'Save'
+      OnClick = btnSaveProfileClick
+    end
+    object btnLoadProfile: TBCButton
+      Left = 174
+      Height = 32
+      Top = 568
+      Width = 150
+      Caption = 'Load'
+      OnClick = btnLoadProfileClick
+    end
+    object chkAutostart: TCheckBox
+      Left = 16
+      Height = 22
+      Top = 612
+      Width = 308
+      Caption = 'Re-apply at every login'
+      TabOrder = 11
+      OnChange = chkAutostartChange
+    end
+    object lblAutoHint: TBCLabel
+      AutoSize = False
+      Left = 16
+      Height = 60
+      Top = 640
+      Width = 308
+      Caption = 'Writes a script that restores this layout and the touch mapping.'
+    end
+  end
+  object pnlCanvasHost: TPanel
+    Left = 0
+    Height = 748
+    Top = 66
+    Width = 1060
+    Align = alClient
+    BevelInner = bvNone
+    BevelOuter = bvNone
+    Caption = ''
+    TabOrder = 3
+  end
+  object timIdentify: TTimer
+    Enabled = False
+    Interval = 2600
+    OnTimer = timIdentifyTimer
+    Left = 600
+    Top = 400
+  end
+end

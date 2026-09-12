@@ -1,10 +1,15 @@
-
-*.compiled
-lib/x86_64-linux/lazrandr.o
-lib/x86_64-linux/lazrandr.or
-lib/x86_64-linux/lazrandr.res
-lib/x86_64-linux/unit1.o
-published/lazrandr.zip
-lib/x86_64-linux/unit1.ppu
-lib/x86_64-linux/unit1.lfm
+# build output
+lib/
 lazrandr
+*.compiled
+*.o
+*.or
+*.ppu
+published/
+
+# Lazarus session state (per-user window positions, not source)
+*.lps
+
+# scripts the app generates at runtime
+xrandr_apply.sh
+SETMYMONITORS.sh

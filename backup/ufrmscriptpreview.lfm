@@ -1,0 +1,181 @@
+object frmScriptPreview: TfrmScriptPreview
+  Left = 651
+  Height = 1088
+  Top = 719
+  Width = 1299
+  Caption = 'Script Preview - Review Before Applying'
+  ClientHeight = 1088
+  ClientWidth = 1299
+  DesignTimePPI = 137
+  Position = poScreenCenter
+  LCLVersion = '4.99.0.0'
+  object btnApplyScript: TButton
+    AnchorSideTop.Control = btnCancel
+    AnchorSideRight.Control = btnCancel
+    Left = 945
+    Height = 43
+    Top = 1039
+    Width = 170
+    Anchors = [akTop, akRight]
+    BorderSpacing.Left = 6
+    BorderSpacing.Right = 6
+    Caption = 'Apply Settings'
+    TabOrder = 0
+    OnClick = btnApplyScriptClick
+  end
+  object btnCancel: TButton
+    AnchorSideTop.Control = pnlScriptsViewer
+    AnchorSideTop.Side = asrBottom
+    AnchorSideRight.Control = Owner
+    AnchorSideRight.Side = asrBottom
+    AnchorSideBottom.Control = Owner
+    AnchorSideBottom.Side = asrBottom
+    Left = 1121
+    Height = 43
+    Top = 1039
+    Width = 172
+    Anchors = [akRight, akBottom]
+    BorderSpacing.Left = 6
+    BorderSpacing.Top = 6
+    BorderSpacing.Right = 6
+    BorderSpacing.Bottom = 6
+    Cancel = True
+    Caption = 'Cancel'
+    TabOrder = 1
+    OnClick = btnCancelClick
+  end
+  object pnlScriptsViewer: TPanel
+    AnchorSideLeft.Control = Owner
+    AnchorSideTop.Control = pnlHeader
+    AnchorSideTop.Side = asrBottom
+    AnchorSideRight.Control = Owner
+    AnchorSideRight.Side = asrBottom
+    AnchorSideBottom.Control = btnCancel
+    Left = 6
+    Height = 861
+    Top = 172
+    Width = 1287
+    Anchors = [akTop, akLeft, akRight, akBottom]
+    BorderSpacing.Left = 6
+    BorderSpacing.Top = 6
+    BorderSpacing.Right = 6
+    BevelOuter = bvNone
+    ClientHeight = 861
+    ClientWidth = 1287
+    TabOrder = 2
+    object lblNewScript: TLabel
+      AnchorSideLeft.Control = memoNewScript
+      AnchorSideLeft.Side = asrCenter
+      AnchorSideTop.Control = pnlScriptsViewer
+      Left = 150
+      Height = 27
+      Top = 6
+      Width = 341
+      BorderSpacing.Top = 6
+      Caption = 'New Configuration (will be applied):'
+      Font.Style = [fsBold]
+      ParentFont = False
+    end
+    object lblSafetyScript: TLabel
+      AnchorSideLeft.Control = memoSafetyScript
+      AnchorSideLeft.Side = asrCenter
+      AnchorSideTop.Control = pnlScriptsViewer
+      Left = 805
+      Height = 27
+      Top = 6
+      Width = 319
+      BorderSpacing.Top = 6
+      Caption = 'Safety Script (auto-reverts in 30s):'
+      Font.Style = [fsBold]
+      ParentFont = False
+    end
+    object memoSafetyScript: TMemo
+      AnchorSideLeft.Control = Bevel1
+      AnchorSideTop.Control = Bevel1
+      AnchorSideRight.Control = pnlScriptsViewer
+      AnchorSideRight.Side = asrBottom
+      AnchorSideBottom.Control = Bevel1
+      AnchorSideBottom.Side = asrBottom
+      Left = 641
+      Height = 816
+      Top = 39
+      Width = 646
+      Anchors = [akTop, akLeft, akRight, akBottom]
+      Font.CharSet = ANSI_CHARSET
+      Font.Height = -15
+      Font.Name = 'Courier New'
+      ParentFont = False
+      ReadOnly = True
+      ScrollBars = ssAutoBoth
+      TabOrder = 0
+    end
+    object memoNewScript: TMemo
+      AnchorSideLeft.Control = pnlScriptsViewer
+      AnchorSideTop.Control = Bevel1
+      AnchorSideRight.Control = Bevel1
+      AnchorSideBottom.Control = Bevel1
+      AnchorSideBottom.Side = asrBottom
+      Left = 0
+      Height = 816
+      Top = 39
+      Width = 641
+      Anchors = [akTop, akLeft, akRight, akBottom]
+      Font.CharSet = ANSI_CHARSET
+      Font.Height = -15
+      Font.Name = 'Courier New'
+      ParentFont = False
+      ReadOnly = True
+      ScrollBars = ssAutoBoth
+      TabOrder = 1
+    end
+    object Bevel1: TBevel
+      AnchorSideLeft.Control = pnlScriptsViewer
+      AnchorSideLeft.Side = asrCenter
+      AnchorSideTop.Control = lblNewScript
+      AnchorSideTop.Side = asrBottom
+      AnchorSideBottom.Control = pnlScriptsViewer
+      AnchorSideBottom.Side = asrBottom
+      Left = 641
+      Height = 816
+      Top = 39
+      Width = 5
+      Anchors = [akTop, akLeft, akBottom]
+      BorderSpacing.Top = 6
+      BorderSpacing.Bottom = 6
+      Style = bsRaised
+    end
+  end
+  object pnlHeader: TPanel
+    AnchorSideLeft.Control = pnlScriptsViewer
+    AnchorSideTop.Control = Owner
+    AnchorSideRight.Control = pnlScriptsViewer
+    AnchorSideRight.Side = asrBottom
+    Left = 6
+    Height = 154
+    Top = 12
+    Width = 1287
+    Anchors = [akTop, akLeft, akRight]
+    BorderSpacing.Top = 12
+    ClientHeight = 154
+    ClientWidth = 1287
+    Color = clBlue
+    ParentBackground = False
+    ParentColor = False
+    TabOrder = 3
+    object lblWarning: TLabel
+      Left = 1
+      Height = 152
+      Top = 1
+      Width = 1285
+      Align = alClient
+      AutoSize = False
+      Caption = 'lblWarning'
+      Font.Color = clYellow
+      Font.Height = -23
+      Font.Name = 'Monospace'
+      ParentColor = False
+      ParentFont = False
+      WordWrap = True
+    end
+  end
+end

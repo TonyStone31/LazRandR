@@ -1,0 +1,92 @@
+object frmScriptPreview: TfrmScriptPreview
+  Left = 320
+  Height = 660
+  Top = 180
+  Width = 940
+  Caption = 'Replay script'
+  ClientHeight = 660
+  ClientWidth = 940
+  Constraints.MinHeight = 400
+  Constraints.MinWidth = 640
+  DesignTimePPI = 96
+  Position = poMainFormCenter
+  LCLVersion = '4.99.0.0'
+  OnCreate = FormCreate
+  object pnlTop: TBCPanel
+    Left = 0
+    Height = 58
+    Top = 0
+    Width = 940
+    Align = alTop
+    BevelInner = bvNone
+    BevelOuter = bvNone
+    TabOrder = 0
+    object lblHeading: TBCLabel
+      AutoSize = False
+      Left = 20
+      Height = 20
+      Top = 9
+      Width = 700
+      Caption = 'Replay script'
+    end
+    object lblPath: TBCLabel
+      AutoSize = False
+      Left = 20
+      Height = 16
+      Top = 31
+      Width = 900
+      Caption = 'path'
+    end
+  end
+  object memScript: TMemo
+    Left = 0
+    Height = 536
+    Top = 58
+    Width = 940
+    Align = alClient
+    ScrollBars = ssAutoBoth
+    TabOrder = 1
+    WordWrap = False
+  end
+  object pnlBottom: TBCPanel
+    Left = 0
+    Height = 66
+    Top = 594
+    Width = 940
+    Align = alBottom
+    BevelInner = bvNone
+    BevelOuter = bvNone
+    TabOrder = 2
+    object btnCopy: TBCButton
+      Left = 20
+      Height = 36
+      Top = 15
+      Width = 150
+      Caption = 'Copy'
+      OnClick = btnCopyClick
+    end
+    object btnSaveAs: TBCButton
+      Left = 180
+      Height = 36
+      Top = 15
+      Width = 170
+      Caption = 'Save As...'
+      OnClick = btnSaveAsClick
+    end
+    object btnClose: TBCButton
+      Left = 780
+      Height = 36
+      Top = 15
+      Width = 140
+      Anchors = [akTop, akRight]
+      Caption = 'Close'
+      OnClick = btnCloseClick
+    end
+  end
+  object dlgSave: TSaveDialog
+    DefaultExt = '.sh'
+    Filter = 'Shell script|*.sh|All files|*'
+    Left = 470
+    Top = 320
+  end
+end
