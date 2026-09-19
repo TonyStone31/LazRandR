@@ -91,6 +91,13 @@ for the desktop session *and* for the login screen.
     Cinnamon's own panel uses, unlocking true per-monitor fractional scaling
     (applied by muffin, so it is not drawn on LazRandR's canvas).
 
+## Download
+
+Grab the prebuilt 64-bit Linux binary from the
+[latest release](https://github.com/TonyStone31/LazRandR/releases/latest),
+unpack it and run `./lazrandr`. Needs an X11 session, GTK3 and glibc 2.34+
+(Linux Mint 21+, Ubuntu 22.04+, Debian 12+). To build it yourself, see below.
+
 ## Requirements
 
 - Linux with an **X11** session (not Wayland). Developed and tested on
