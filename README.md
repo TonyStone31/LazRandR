@@ -240,3 +240,7 @@ menu, correct command generation — but gated behind a check that disabled it
 on Cinnamon, GNOME, MATE, Budgie and Unity, because those window managers
 ignore XRandR monitors for snapping and maximise. It could never do anything
 useful here, so it is gone rather than left as dead weight.
+
+## License
+
+MIT — see [`LICENSE`](LICENSE). Use it, change it, share it.
