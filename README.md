@@ -1,13 +1,39 @@
 # LazRandR
 
-A display configuration tool for X11 that also maps touchscreens to the right
-monitor — the part every desktop environment's display panel leaves out.
+A display configuration tool for Linux/X11 that also **maps touchscreens to the
+right monitor** — the part every desktop environment's display panel leaves out.
 
-Built with Lazarus/FPC, GTK3, BGRABitmap.
+Written in Free Pascal with Lazarus (GTK3) and BGRABitmap.
 
 ---
 
-## Why
+## The story
+
+LazRandR started in November 2021 with a different goal. I wanted to carve one
+big monitor into several *virtual* displays, so windows would snap and maximise
+into halves or thirds as if they were separate screens. `xrandr --setmonitor`
+looked like it could do that, so I wrote a small Lazarus front end around
+`xrandr` to drag monitors around and split them.
+
+It turned out the idea was a dead end below the tool. The virtual monitors got
+created, but the window managers that matter — Cinnamon, GNOME, MATE, Budgie,
+Unity — ignore XRandR monitors for snapping and maximising. There was no longer
+anything lower in the stack that honoured them, so the project sat.
+
+Years later I bought a small portable touchscreen and plugged it in next to my
+two 4K monitors on Linux Mint. It displayed fine. Touching it did not: the
+cursor landed on a completely different screen. X reports touch coordinates
+across the *whole* virtual desktop, and nothing in Mint's display settings
+tells a touchscreen which monitor it actually belongs to. Rotate the panel and
+the axes swap too.
+
+That was a real problem worth solving, and the old layout editor was already
+most of the way to the tool that could solve it. So in September 2026
+LazRandR was rewritten from the ground up as a display **and touch mapping**
+tool, and the virtual-split code was removed. A more detailed timeline is in
+[`docs/HISTORY.md`](docs/HISTORY.md).
+
+## Why it's needed
 
 Cinnamon's display settings (and GNOME's, and most others) can move monitors
 around and rotate them. What none of them do is tell an **absolute input
@@ -26,7 +52,8 @@ script so it survives a logout.
 
 The second thing missing: Cinnamon only persists a layout applied through its
 own panel. Anything set with `xrandr` leaves no `~/.config/monitors.xml`
-behind, so it is gone on next login. LazRandR persists both halves itself.
+behind, so it is gone on next login. LazRandR persists both halves itself —
+for the desktop session *and* for the login screen.
 
 ## What it does
 
@@ -55,16 +82,32 @@ behind, so it is gone on next login. LazRandR persists both halves itself.
   underneath an active screen. Drag out to switch on, drop in to switch off.
 - **Per-tile controls** — rotate, set primary and switch off directly on the
   selected screen.
-- **Interface scale** — 100/200/300/400%, the same Cinnamon setting its own
-  display panel drives. Global on X11, not per-monitor.
+- **Scaling, stated honestly** — three separate controls, each labelled for
+  what it really does:
+  - *Interface scale* — Auto/100/200/300/400%. Cinnamon's `scaling-factor` is
+    an integer, so whole multiples are all it can take.
+  - *Text scale* — 50–300% in 25% steps. Enlarges text only.
+  - *Fractional scaling* — toggles the same muffin experimental features
+    Cinnamon's own panel uses, unlocking true per-monitor fractional scaling
+    (applied by muffin, so it is not drawn on LazRandR's canvas).
+
+## Requirements
+
+- Linux with an **X11** session (not Wayland). Developed and tested on
+  Linux Mint / Cinnamon with NVIDIA.
+- `xrandr` and `xinput` on the `PATH`.
+- `pkexec` (polkit) for installing the login-screen hook.
+- LightDM or SDDM for login-screen persistence; GDM is not supported.
 
 ## Building
 
-Requires the fpcupdeluxe Lazarus/FPC trunk install at
-`/media/tony/storpart/fpctrunklaztrunk`, with `BGRABitmapPack` and
-`BGRAControls` registered.
+You need Lazarus/FPC with the GTK3 widgetset and the `BGRABitmapPack` and
+`BGRAControls` packages installed. The build script expects an fpcupdeluxe
+layout (`<root>/lazarus` and `<root>/config_lazarus`); point it at yours with
+`LAZ_ROOT`:
 
 ```bash
+LAZ_ROOT=~/fpcupdeluxe ./build.sh   # use your own install
 ./build.sh              # optimised build (default)
 ./build.sh --debug      # range/overflow checks, debug info, heaptrc
 ./build.sh --clean      # wipe lib/ and the binary first
@@ -72,11 +115,12 @@ Requires the fpcupdeluxe Lazarus/FPC trunk install at
 ./run.sh                # build if needed, then run
 ```
 
+Or open `lazrandr.lpi` in the Lazarus IDE and build from there.
+
 Release is `-O3`, smart-linked and stripped (~6 MB); Debug keeps the checks
 and symbols and builds to a separate output directory.
 
-The widgetset is pinned to **gtk3** — the only one compiled in that Lazarus
-install, and what the forms are laid out against.
+The widgetset is pinned to **gtk3** — what the forms are laid out against.
 
 > `build.sh` touches a `.pas` whenever its `.lfm` is newer. lazbuild decides
 > what to recompile from the `.pas` timestamp alone, so editing a form in the
@@ -85,8 +129,8 @@ install, and what the forms are laid out against.
 
 ## Editing the forms
 
-All three forms (`ufrmmain`, `ufrmscriptpreview`, `ufrmidentify`) are real LFMs
-and open in the Lazarus designer.
+All the forms (`ufrmmain`, `ufrmscriptpreview`, `ufrmidentify`, `ufrmconfirm`,
+`ufrmgreeter`) are real LFMs and open in the Lazarus designer.
 
 The one thing not on a form is `TLayoutCanvas`, created at runtime into the
 `pnlCanvasHost` panel. It lives in this project rather than an installed
@@ -107,7 +151,7 @@ nested style blocks and remain easy to edit by hand.
 | `ugreeter.pas` | Detect the login manager, generate and install its hook |
 | `utheme.pas` | Palette, control skinning, shared BGRA drawing helpers |
 | `ulayoutcanvas.pas` | The drag/snap canvas (runtime control) |
-| `ufrmmain` / `ufrmscriptpreview` / `ufrmidentify` / `ufrmgreeter` | Forms + LFMs |
+| `ufrmmain` / `ufrmscriptpreview` / `ufrmidentify` / `ufrmconfirm` / `ufrmgreeter` | Forms + LFMs |
 
 Config and generated files live in `~/.config/lazrandr/`.
 

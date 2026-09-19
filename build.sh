@@ -6,7 +6,8 @@
 
 set -u
 
-LAZ_ROOT="/media/tony/storpart/fpctrunklaztrunk"
+# Override with LAZ_ROOT=/path/to/your/install ./build.sh
+LAZ_ROOT="${LAZ_ROOT:-/media/tony/storpart/fpctrunklaztrunk}"
 LAZARUS_DIR="$LAZ_ROOT/lazarus"
 PCP_DIR="$LAZ_ROOT/config_lazarus"
 PROJECT_FILE="lazrandr.lpi"

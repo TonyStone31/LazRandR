@@ -13,3 +13,6 @@ published/
 # scripts the app generates at runtime
 xrandr_apply.sh
 SETMYMONITORS.sh
+
+# Lazarus IDE auto-backups
+backup/
